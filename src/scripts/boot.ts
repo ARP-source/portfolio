@@ -36,7 +36,7 @@ async function start(): Promise<void> {
     info.state = 'off';
     return;
   }
-  observeSections();
+  let stopSections = observeSections();
   const caps = detectCapabilities();
   // An earlier page this visit already measured this device: start where its probe ended up.
   // Only a running tier is remembered: one slow moment must never switch the field off for a visit.
@@ -98,6 +98,24 @@ async function start(): Promise<void> {
         root.dataset.field = 'on';
         info.state = 'running';
         info.bootMs = Math.round(performance.now() - t0);
+        // From here on, moving between pages keeps the field running instead of reloading it.
+        import('./nav')
+          .then(({ enableNav }) =>
+            enableNav({
+              swapped: (slug) => {
+                stopSections();
+                stopSections = observeSections();
+                pageReady(false);
+                field?.pageChanged(slug);
+              },
+              // After the glide: the demo's recordings and the text mask are the heavy part.
+              settled: () => {
+                demoWhenNear();
+                field?.measure();
+              },
+            }),
+          )
+          .catch(() => {});
       },
     });
     info.stats = field.stats;
@@ -131,7 +149,6 @@ function arrival(s: ReturnType<typeof readSession>) {
  * the list the visitor came from (/, /neuro or /swe).
  */
 function rememberPages(): void {
-  if (document.querySelector('[data-thread-target]')) writeSession({ list: location.pathname });
   addEventListener('click', (e) => {
     const a = (e.target as Element | null)?.closest?.('a[href^="/work/"]');
     const slug = a?.getAttribute('href')?.split(/[/#?]/)[2];
@@ -139,10 +156,16 @@ function rememberPages(): void {
     const rect = el && threadRect(el);
     if (slug && rect) writeSession({ thread: { slug, rect, ys: threadHeights(el), at: Date.now() } });
   });
+}
+
+/** Per page, on load and after each in-place page change: the list, the way back, the demo. */
+function pageReady(demo = true): void {
+  if (document.querySelector('[data-thread-target]')) writeSession({ list: location.pathname });
   const list = readSession().list;
   if (list === '/neuro' || list === '/swe') {
     document.querySelectorAll<HTMLAnchorElement>('a[href="/#work"][data-back]').forEach((a) => (a.href = `${list}#work`));
   }
+  if (demo) demoWhenNear();
 }
 
 /** ?fps: a small readout for checking a real device by hand. */
@@ -163,20 +186,27 @@ function showFps(): void {
 }
 
 /** The demo's code and recordings (~200 KB) load only as its section comes within a screen. */
+let demoIo: IntersectionObserver | null = null;
 function demoWhenNear(): void {
-  const el = document.querySelector<HTMLElement>('[data-demo]');
-  if (!el) return;
-  const io = new IntersectionObserver(
+  demoIo?.disconnect();
+  const el = document.querySelector<HTMLElement>('main [data-demo]');
+  if (!el) {
+    // Left the page with the demo: the field lets its formation go.
+    if (root.dataset.demo) bus.emit('emg:stage', { on: false });
+    delete root.dataset.demo;
+    return;
+  }
+  const io = (demoIo = new IntersectionObserver(
     (entries) => {
       if (!entries.some((e) => e.isIntersecting)) return;
       io.disconnect();
-      import('../demo/demo').then((m) => m.mountDemo(el)).catch((e) => console.warn('demo failed to load', e));
+      import('../demo/demo').then((m) => (el.isConnected ? m.mountDemo(el) : undefined)).catch((e) => console.warn('demo failed to load', e));
     },
     { rootMargin: '100% 0px' },
-  );
+  ));
   io.observe(el);
 }
 
 rememberPages();
-demoWhenNear();
+pageReady();
 void start();

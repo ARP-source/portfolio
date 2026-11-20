@@ -158,6 +158,11 @@ export class Field {
     : Promise.resolve(null);
   #handReady = false;
   #handData: HandData | null = null;
+  /** Which particles make the hand and in how many columns: kept so a hand loaded later can be filled in. */
+  #handMap: { n: number; size: number; ids: number[]; cols: number } | null = null;
+  #handLoading = false;
+  /** Between pageChanged() and measure(): the page is still gliding in. */
+  #swapping = false;
   #bleed = 0;
   #bleedTarget = 0;
   /** The demo: wired up (stage), eased weights, and what the classifier last said. */
@@ -383,6 +388,47 @@ export class Field {
     this.#bleedTarget = Math.min(1, Math.max(0, amount));
   }
 
+  /**
+   * The page under the field was swapped for another without a reload (nav.ts): the field keeps
+   * running. Pass the slug of the project whose card was clicked, if any: its dots carry on into
+   * that project's line, drawn again from the left. Call measure() once the glide has finished.
+   */
+  pageChanged(arrive?: string): void {
+    // The swap scrolled the page: not a scroll by the visitor, so no kick or hurry from it.
+    this.#scrollY = scrollY;
+    this.#scrollDy = 0;
+    this.#scrollV = 0;
+    this.#swapping = true;
+    const t = this.#thread;
+    t.cards = [];
+    t.pen = 0;
+    const el = arrive && !this.#o.reducedMotion ? document.querySelector(`[data-thread-line="${arrive}"]`) : null;
+    this.#threadOn(el);
+    t.arriving = el ? THREAD_TIME.arriveS : 0;
+    // Left the hero behind: its dots fly off into the flock from wherever they are, no snapping.
+    if (!document.querySelector('.hero-trace svg') && (this.#formTo() === 1 || this.#form.value > 0)) {
+      this.#reform = { pending: false, start: -1, t: 0, pace: 1, spin: 0 };
+      this.#shared.uReform!.value = -1;
+      this.#shared.uAbort!.value = 0;
+      this.#form = { from: 0, to: 0, p: 1, pace: 1, value: 0 };
+      this.#holdFlock('free');
+    }
+    this.#ensureHand();
+    // Reduced motion has no frame loop to notice the hero: settle on this page's formation now.
+    if (this.#o.reducedMotion) {
+      const want = this.#wantHero() ?? this.#heroVisible();
+      if ((want ? 1 : 0) !== this.#formTo()) this.setFormation(want ? 'trace' : 'swarm', true);
+    }
+    this.#still();
+  }
+
+  /** Re-read this page's text and cards (the mask the dots fade under). */
+  measure(): void {
+    this.#swapping = false;
+    this.#measureText();
+    this.#still();
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
@@ -422,14 +468,6 @@ export class Field {
     // H.w: trace members 0..HAND_SPLIT (their order along the line), hand members above it.
     const byX = Array.from({ length: n }, (_, i) => i).sort((a, b) => homes[a * 4]! - homes[b * 4]!);
     const nt = Math.round(n * HAND_SPLIT);
-    const columnOrder = (ids: number[], ncols: number, key: (i: number) => [number, number]) => {
-      const per = Math.ceil(ids.length / ncols);
-      const out: number[] = [];
-      for (let c = 0; c < ids.length; c += per) {
-        out.push(...ids.slice(c, c + per).sort((a, b) => key(a)[1] - key(b)[1]));
-      }
-      return out;
-    };
     const traceCols = Math.max(1, Math.round(cols * HAND_SPLIT));
     const traceIds = columnOrder(byX.slice(0, nt), traceCols, (i) => [homes[i * 4]!, homes[i * 4 + 1]!]);
     traceIds.forEach((id, k) => (homes[id * 4 + 3] = (k / nt) * HAND_SPLIT));
@@ -440,26 +478,8 @@ export class Field {
     home.needsUpdate = true;
 
     // Hand points for hand members, matched the same way (columns by screen x, rows by height).
-    const hd = this.#handData;
-    this.#handReady = hd !== null;
-    const handLocal = new Float32Array(n * 4);
-    if (hd) {
-      const m = hd.skin.length;
-      const pick = Array.from({ length: handIds.length }, (_, k) => Math.floor((k * m) / handIds.length));
-      const ordered = columnOrder(
-        pick.sort((a, b) => hd.xyz[a * 3]! - hd.xyz[b * 3]!),
-        Math.max(1, cols - traceCols),
-        (j) => [hd.xyz[j * 3]!, -hd.xyz[j * 3 + 1]!],
-      );
-      handIds.forEach((id, k) => {
-        const j = ordered[k]!;
-        handLocal.set([hd.xyz[j * 3]!, hd.xyz[j * 3 + 1]!, hd.xyz[j * 3 + 2]!, hd.skin[j]!], id * 4);
-      });
-    }
-    const handTex = new DataTexture(handLocal, size, size, RGBAFormat, FloatType);
-    handTex.minFilter = handTex.magFilter = NearestFilter;
-    handTex.needsUpdate = true;
-    this.#shared.uHandLocal!.value = handTex;
+    this.#handMap = { n, size, ids: handIds, cols: Math.max(1, cols - traceCols) };
+    const { handLocal, handTex } = this.#fillHand();
     this.#updateHand(0);
 
     const p0 = gpu.createTexture();
@@ -547,6 +567,47 @@ export class Field {
     r.setRenderTarget(prev);
     await done;
     quad.dispose();
+  }
+
+  /** The hand members' points on the hand (none until the point cloud is here), as a texture. */
+  #fillHand(): { handLocal: Float32Array<ArrayBuffer>; handTex: DataTexture } {
+    const { n, size, ids, cols } = this.#handMap!;
+    const hd = this.#handData;
+    this.#handReady = hd !== null;
+    const handLocal = new Float32Array(n * 4);
+    if (hd) {
+      const m = hd.skin.length;
+      const pick = Array.from({ length: ids.length }, (_, k) => Math.floor((k * m) / ids.length));
+      const ordered = columnOrder(pick.sort((a, b) => hd.xyz[a * 3]! - hd.xyz[b * 3]!), cols, (j) => [hd.xyz[j * 3]!, -hd.xyz[j * 3 + 1]!]);
+      ids.forEach((id, k) => {
+        const j = ordered[k]!;
+        handLocal.set([hd.xyz[j * 3]!, hd.xyz[j * 3 + 1]!, hd.xyz[j * 3 + 2]!, hd.skin[j]!], id * 4);
+      });
+    }
+    const handTex = new DataTexture(handLocal, size, size, RGBAFormat, FloatType);
+    handTex.minFilter = handTex.magFilter = NearestFilter;
+    handTex.needsUpdate = true;
+    this.#shared.uHandLocal!.value = handTex;
+    return { handLocal, handTex };
+  }
+
+  /** Arrived on a page with the hero's hand when the visit began without one: fetch it now. */
+  #ensureHand(): void {
+    if (this.#handData || this.#handLoading || !this.#sim) return;
+    if ((document.querySelector('.hero-hand')?.getBoundingClientRect().width ?? 0) <= 0) return;
+    this.#handLoading = true;
+    loadHand()
+      .then((hd) => {
+        const s = this.#sim;
+        if (this.#disposed || !hd || !s) return;
+        this.#handData = hd;
+        const old = s.handTex;
+        Object.assign(s, this.#fillHand());
+        old.dispose();
+        this.#still();
+      })
+      .catch(() => {})
+      .finally(() => (this.#handLoading = false));
   }
 
   #teardownSim(): void {
@@ -1145,7 +1206,8 @@ export class Field {
       }
     }, document);
 
-    const ro = new ResizeObserver(() => this.#measureText());
+    // Not mid page change: the swap resizes the body, and measuring then stuttered the glide.
+    const ro = new ResizeObserver(() => !this.#swapping && this.#measureText());
     ro.observe(document.body);
     this.#off.push(() => ro.disconnect());
 
@@ -1246,6 +1308,16 @@ function playbackPhase(): number {
 }
 let tapeOrigin: number | null = null;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
+
+/** Ids split into ncols runs (in the order given), each run sorted top to bottom by key()[1]. */
+function columnOrder(ids: number[], ncols: number, key: (i: number) => [number, number]): number[] {
+  const per = Math.ceil(ids.length / ncols);
+  const out: number[] = [];
+  for (let c = 0; c < ids.length; c += per) {
+    out.push(...ids.slice(c, c + per).sort((a, b) => key(a)[1] - key(b)[1]));
+  }
+  return out;
+}
 
 /** Whether a position: sticky element is currently held at its offset. */
 function stuck(el: Element | null): boolean {

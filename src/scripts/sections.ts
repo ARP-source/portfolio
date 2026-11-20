@@ -1,7 +1,7 @@
 import { bus } from './bus';
 
-/** Sections announce themselves; the Field decides what that means. */
-export function observeSections(): void {
+/** Sections announce themselves; the Field decides what that means. Returns a stop function. */
+export function observeSections(): () => void {
   const visible = new Set<string>();
   const io = new IntersectionObserver(
     (entries) => {
@@ -19,4 +19,5 @@ export function observeSections(): void {
     { threshold: 0, rootMargin: '-35% 0px -35% 0px' },
   );
   document.querySelectorAll<HTMLElement>('[data-section]').forEach((el) => io.observe(el));
+  return () => io.disconnect();
 }

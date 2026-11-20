@@ -19,6 +19,8 @@ const ROUNDS = 3;
 
 export async function mountDemo(root: HTMLElement): Promise<void> {
   const emg = await loadEmg(root.dataset.src);
+  // The visitor moved to another page while the recordings loaded.
+  if (!root.isConnected) return;
   const $ = <T extends Element = HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
   const scope = $('.scope');
   const steps = [...root.querySelectorAll<HTMLLIElement>('.steps > li')];

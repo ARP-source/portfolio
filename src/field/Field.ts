@@ -58,7 +58,7 @@ const FORM_MS = 1900;
  * nothing changes; at fullVh and faster it runs at max. leadS: how far ahead a fast scroll is
  * read, so the hero lets go (or starts re-forming) before the trigger point actually arrives.
  */
-const PACE = { fromVh: 0.6, fullVh: 3, max: 3, leadS: 0.45 };
+const PACE = { fromVh: 0.6, fullVh: 3, max: 3, leadS: 0.45, leadMaxVh: 0.3 };
 const TEXT_SELECTOR =
   'main h1, main h2, main h3, main p, main li, main dt, main dd, main th, main td, main figcaption, main a, main .meta, header a, footer a, footer p';
 
@@ -632,7 +632,7 @@ export class Field {
     // A line that sits at the bottom of a short screen still counts once it is mostly on screen.
     const vh = innerHeight;
     // Scrolling up fast, start as the line is about to arrive rather than once it has.
-    const lead = Math.max(0, -this.#scrollV) * PACE.leadS;
+    const lead = this.#lead(-this.#scrollV);
     return r.top + r.height * 0.5 < vh + lead && r.bottom > vh * 0.1;
   }
 
@@ -655,7 +655,7 @@ export class Field {
     if (this.#formTo() === 1) {
       // Scrolling down fast, let go a little before the divider arrives, by how far it will
       // travel in leadS. Remember how early, so stopping right there doesn't re-form it.
-      const lead = Math.max(0, this.#scrollV) * PACE.leadS;
+      const lead = this.#lead(this.#scrollV);
       if (top > innerHeight + lead) return true;
       this.#releaseLead = lead;
       return false;
@@ -703,6 +703,12 @@ export class Field {
   }
 
   #flockPace = 1;
+
+  /** How far ahead (px) to read a scroll moving at v px/s in the direction that matters. Capped,
+   *  so a flick or a jump can't fire a release from far away that a scroll back can never undo. */
+  #lead(v: number): number {
+    return Math.min(Math.max(0, v) * PACE.leadS, PACE.leadMaxVh * innerHeight);
+  }
 
   #holdFlock(where: 'hero' | 'top' | 'free'): void {
     const f = this.#flock;

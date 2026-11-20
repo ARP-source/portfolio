@@ -9,8 +9,9 @@ export const site = {
   // TODO(anuraag): add an email address and LinkedIn URL for the contact section.
   email: '',
   linkedin: '',
-  // TODO(anuraag): set once the Vercel domain is chosen; used for canonical URLs and OG tags.
-  url: '',
+  // The site's address, for canonical URLs and link previews. The Vercel production address until
+  // a domain of your own is set up. TODO(anuraag): your own domain, if you get one.
+  url: 'https://signal-portfolio-pi.vercel.app',
 } as const;
 
 export type Audience = 'neuro' | 'swe';

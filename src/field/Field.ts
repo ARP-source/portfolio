@@ -23,6 +23,7 @@ import { durations, palette, tracePlayback } from '../tokens/tokens';
 import { TIER_SIZE } from './tiers';
 import { pointsFragment, pointsVertex, positionShader, velocityShader } from './shaders';
 import trace from '../data/hero-trace.json';
+import { REFORM, traceRoute } from './reform';
 import { BONES, POSES, SEQUENCE, blendPose, handWorld, loadHand, poseBones, projectHand, type HandData } from './hand';
 
 /** Formations implemented in v1. The rest of the contract arrives in later phases. */
@@ -44,7 +45,7 @@ const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number
 const PARALLAX = 0.3, WRAP_M = 40;
 /** How long the hero takes to dissolve into the swarm; each particle's own release is a slice of it. */
 const RELEASE_MS = 2600;
-/** Re-forming is a little quicker than dissolving. */
+/** Re-forming in place (reduced motion, or scrolling back before the hero has fully let go). */
 const FORM_MS = 1900;
 const TEXT_SELECTOR =
   'main h1, main h2, main h3, main p, main li, main dt, main dd, main th, main td, main figcaption, main a, main .meta, header a, footer a, footer p';
@@ -95,6 +96,9 @@ export class Field {
   #scrollY = scrollY;
   #scrollDy = 0;
   #form = { from: 0, to: 0, start: 0, value: 0 };
+  /** Re-forming along the drawn routes: waits until the hero is on screen, then runs REFORM.totalS
+   *  of simulation time (so a slow frame slows the whole procession instead of leaving dots behind). */
+  #reform = { pending: false, start: -1, t: 0 };
   #handM: Float32Array<ArrayBuffer> = handWorld(0);
   #bones = new Float32Array(BONES * 16);
   #grip = 0;
@@ -161,6 +165,8 @@ export class Field {
       uTrace: { value: this.#traceTex },
       uTraceN: { value: pts.length },
       uClipN: { value: PER_CLIP },
+      uReform: { value: -1 },
+      uRoute: { value: traceRoute() },
       uPixelRatio: { value: 1 },
       uTissue: { value: c(palette.tissue) },
       uInk: { value: c(palette.ink) },
@@ -233,6 +239,20 @@ export class Field {
       this.#step(1 / 60);
       this.#shared.uSnap!.value = 0;
       this.#fade = 0;
+      return;
+    }
+    const reforming = this.#reform.pending || this.#reform.start >= 0;
+    if (reforming && to === 1) return;
+    this.#reform = { pending: false, start: -1, t: 0 };
+    this.#shared.uReform!.value = -1;
+    // Back to the hero from the swarm: wait for it to come on screen, then swim the drawn routes.
+    if (to === 1 && !instant && !this.#o.reducedMotion && this.#form.value < 0.5 && this.#sim) {
+      this.#reform.pending = true;
+      return;
+    }
+    // Leaving mid re-form: let go from wherever each particle is.
+    if (to === 0 && reforming && this.#form.value === 1) {
+      this.#form = { from: 1, to: 0, start: now, value: 1 };
       return;
     }
     this.#form = { from: instant ? to : this.#form.value, to, start: now, value: instant ? to : this.#form.value };
@@ -446,8 +466,9 @@ export class Field {
     this.#shared.uPointer!.value = [p.x, p.y, p.strength];
 
     const want = this.#wantHero();
-    if (want !== null && (want ? 1 : 0) !== this.#form.to) this.setFormation(want ? 'trace' : 'swarm');
+    if (want !== null && (want ? 1 : 0) !== this.#formTo()) this.setFormation(want ? 'trace' : 'swarm');
     this.#updateTraceRect();
+    this.#runReform(now, dt);
     this.#step(dt);
     this.#fade = Math.min(1, this.#fade + dt / (durations.ui / 1000));
     this.#render();
@@ -458,6 +479,27 @@ export class Field {
     }
     this.#measure(raw);
   };
+
+  /** The formation being headed for, counting a re-form that is waiting for the hero to show. */
+  #formTo(): number {
+    return this.#reform.pending || this.#reform.start >= 0 ? 1 : this.#form.to;
+  }
+
+  #runReform(now: number, dt: number): void {
+    const r = this.#reform;
+    if (r.pending && this.#heroInView()) {
+      r.pending = false;
+      r.start = now;
+      r.t = 0;
+      this.#form = { from: 1, to: 1, start: now, value: 1 };
+    }
+    if (r.start < 0) return;
+    r.t += dt;
+    if (r.t > REFORM.totalS + 0.6) {
+      r.start = -1;
+      this.#shared.uReform!.value = -1;
+    } else this.#shared.uReform!.value = r.t;
+  }
 
   #render(): void {
     const s = this.#sim!;
@@ -519,6 +561,14 @@ export class Field {
     if (!el) return false;
     const r = el.getBoundingClientRect();
     return r.bottom > this.#vh * 0.2 && r.top < this.#vh * 0.8;
+  }
+
+  /** Enough of the hero on screen to watch it form. */
+  #heroInView(): boolean {
+    const el = document.querySelector('.hero-trace svg');
+    if (!el) return true;
+    const r = el.getBoundingClientRect();
+    return r.top < this.#vh * 0.85 && r.bottom > this.#vh * 0.1;
   }
 
   /** Within a screen of the viewport: close enough that released particles can stream in. */
@@ -667,7 +717,7 @@ export class Field {
       this.#mask.dirty = true;
       if (this.#o.reducedMotion) {
         const want = this.#wantHero();
-        if (want !== null && (want ? 1 : 0) !== this.#form.to) this.setFormation(want ? 'trace' : 'swarm');
+        if (want !== null && (want ? 1 : 0) !== this.#formTo()) this.setFormation(want ? 'trace' : 'swarm');
       }
       stillUpdate();
     });

@@ -1,4 +1,29 @@
 import { BONES, HAND_CAM } from './hand';
+import { REFORM, ROUTE_N } from './reform';
+
+const f = (n: number) => n.toFixed(3);
+
+/**
+ * Which formation a particle belongs to, and how far into it it is. Shared by the compute passes
+ * and the point shader. The rightmost 40 % of the swarm (by home x) forms the hand when the hero
+ * has room for it. Leaving the hero, each particle lets go at its own moment: the hand first, then
+ * the trace from right to left. Re-forming after a scroll back up runs on its own clock (uReform)
+ * along drawn routes; see reformChunk.
+ */
+const formChunk = /* glsl */ `
+uniform float uHandOn;
+uniform float uReform;      // seconds into a re-form along the drawn routes; < 0 when not re-forming
+const float HAND_SPLIT=0.6;
+bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
+float traceU(vec4 h){ return uHandOn>0.5 ? h.w/HAND_SPLIT : h.w; }
+float formWeight(vec4 h, float seed, float form){
+  // Re-forming: everyone joins the procession within half a second.
+  if(uReform>=0.0) return smoothstep(0.0,0.4,uReform-0.3*fract(seed*5.13));
+  float st=isHand(h) ? 0.78+0.2*fract(seed*7.31) : traceU(h)*0.72+0.06*fract(seed*3.7);
+  float f=clamp((form-st*0.7)/0.3,0.0,1.0);
+  return f*f*(3.0-2.0*f);
+}
+`;
 
 /**
  * GLSL for the Field. Units are CSS pixels in viewport space; y grows downward like the DOM.
@@ -39,26 +64,13 @@ vec2 curl2(vec3 p){
 }
 `;
 
-/**
- * Hand and per-particle formation weight; shared by the compute passes and the point shader.
- * The rightmost 40 % of the swarm (by home x) forms the hand when the hero has room for it,
- * so particles only travel a short way. Leaving the hero, each particle lets go at its own
- * moment: the hand first, then the trace from right to left, so the school peels off in order.
- */
+/** The hand's skinned, projected points; shared by the compute passes. */
 const handChunk = /* glsl */ `
-uniform float uHandOn;
+${formChunk}
 uniform vec4 uHandRect;     // x, y, w, h in CSS px
 uniform mat4 uBones[${BONES}]; // skinning matrices: pose and turn
 uniform sampler2D uHandLocal; // xyz point on the hand, w packed skin (bone * 256 + parent weight * 255)
-const float HAND_SPLIT=0.6;
 const float HAND_CAM=${HAND_CAM.toFixed(1)};
-bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
-float traceU(vec4 h){ return uHandOn>0.5 ? h.w/HAND_SPLIT : h.w; }
-float formWeight(vec4 h, float seed, float form){
-  float st=isHand(h) ? 0.78+0.2*fract(seed*7.31) : traceU(h)*0.72+0.06*fract(seed*3.7);
-  float f=clamp((form-st*0.7)/0.3,0.0,1.0);
-  return f*f*(3.0-2.0*f);
-}
 vec2 handTarget(vec2 uv, out float depth){
   vec4 L=texture2D(uHandLocal,uv);
   int b=int(floor(L.w/256.0+0.001));
@@ -70,6 +82,86 @@ vec2 handTarget(vec2 uv, out float depth){
   float persp=HAND_CAM/(HAND_CAM-w.z);
   depth=w.z;
   return vec2(uHandRect.x+uHandRect.z*0.5+w.x*scale*persp, uHandRect.y+uHandRect.w*0.5-w.y*scale*persp);
+}
+`;
+
+/**
+ * Re-forming along Raag's drawn routes (timing and the trace route live in reform.ts). Each
+ * particle follows a waypoint that moves along its route; reformDone() is 0 until it has landed
+ * on its own point, and until then nothing locks it to the shape.
+ *
+ * Trace: the swarm gathers at the left, rises, loops over the top, spins once and comes back to the
+ * line's left end, then runs along the line to its own spot. The particle bound for the right end
+ * leads, so nobody overtakes and the line draws itself from left to right like a pen.
+ * Hand: the swarm rises up the right side, comes over the top and twirls down around the hand,
+ * then twirls back up, the lowest points landing first, so the hand forms from the wrist up.
+ */
+const reformChunk = /* glsl */ `
+uniform vec2 uRoute[${ROUTE_N}];
+const float GATHER=${f(REFORM.gatherS)};
+const float T_ROUTE=${f(REFORM.traceRouteS)}, T_SPREAD=${f(REFORM.traceSpreadS)}, T_RUN=${f(REFORM.traceRunS)};
+const float H_ROUTE=${f(REFORM.handRouteS)}, H_SPREAD=${f(REFORM.handSpreadS)}, H_CLIMB=${f(REFORM.handClimbS)};
+const float TAU=6.2831853;
+vec2 routeAt(float t){
+  float x=clamp(t,0.0,1.0)*${ROUTE_N - 1}.0; int i=int(min(floor(x),${ROUTE_N - 2}.0));
+  return mix(uRoute[i],uRoute[i+1],x-float(i));
+}
+vec2 jitter(float seed){ return vec2(fract(seed*12.9898),fract(seed*78.233))-0.5; }
+float handHeight(vec2 uv){ return clamp((texture2D(uHandLocal,uv).y+1.0)*0.5,0.0,1.0); }
+float reformDone(vec4 h, float seed, vec2 uv){
+  if(uReform<0.0) return 1.0;
+  float u=traceU(h);
+  // Trace: lands when it reaches its spot, but never before it has fully joined the line (0.15 s).
+  float end=GATHER+(isHand(h) ? H_ROUTE+handHeight(uv)*(H_SPREAD+H_CLIMB) : T_ROUTE+(1.0-u)*T_SPREAD+max(u*T_RUN,0.15));
+  return step(end,uReform);
+}
+// Trace particles in the last stretch, running along the line: 0 before, ramps to 1 as they join it.
+float reformOnLine(vec4 h, float seed, float T){
+  if(uReform<0.0 || isHand(h)) return 0.0;
+  return smoothstep(0.0,0.12,T-GATHER-(1.0-traceU(h))*T_SPREAD-T_ROUTE);
+}
+vec2 reformWaypoint(vec4 h, float seed, vec2 uv, float T){
+  vec2 m=vec2(14.0);
+  T-=GATHER;
+  if(!isHand(h)){
+    float u=traceU(h), lag=(1.0-u)*T_SPREAD, tr=(T-lag)/T_ROUTE;
+    if(tr<1.0){
+      // Ease in and out a little: no lurch leaving the gather, and slow enough at the end to make
+      // the turn onto the line without swinging wide.
+      float e=clamp(tr,0.0,1.0); e=mix(e,e*e*(3.0-2.0*e),0.6);
+      vec2 r=routeAt(e);
+      vec2 p=vec2(uTraceRect.x+r.x*uTraceRect.z, uTraceRect.y+uTraceRect.w*0.5+r.y*uTraceRect.z);
+      p+=jitter(seed)*70.0*(1.0-smoothstep(0.75,1.0,e));
+      return clamp(p,m,uViewport-m);
+    }
+    float s; return traceLine(min(u,(T-lag-T_ROUTE)/T_RUN),seed,s);
+  }
+  float o=handHeight(uv), lag=o*H_SPREAD, tr=(T-lag)/H_ROUTE;
+  vec4 R4=uHandRect;
+  float cx=R4.x+R4.z*0.5, top=R4.y+R4.w*0.04, bot=R4.y+R4.w*0.96, rad=R4.z*0.38;
+  float xr=min(uViewport.x-28.0,R4.x+R4.z+R4.z*0.3);
+  vec2 jt=jitter(seed)*26.0;
+  if(tr<1.0){
+    vec2 p;
+    if(tr<0.3){
+      float a=smoothstep(0.0,1.0,max(tr,0.0)/0.3);
+      p=vec2(xr,mix(bot+R4.w*0.25,top,a));
+    } else if(tr<0.42){
+      float a=(tr-0.3)/0.12;
+      vec2 p0=vec2(xr,top), c=vec2(mix(xr,cx+rad,0.4),top-R4.w*0.16), p2=vec2(cx+rad,top);
+      p=(1.0-a)*(1.0-a)*p0+2.0*(1.0-a)*a*c+a*a*p2;
+    } else {
+      float c=(tr-0.42)/0.58, th=c*1.5*TAU;
+      p=vec2(cx+rad*cos(th),mix(top,bot,c)+0.3*rad*sin(th));
+    }
+    return clamp(p+jt,m,uViewport-m);
+  }
+  // Twirl back up to its own point, closing in on it over the last part of the climb.
+  float depth; vec2 tg=handTarget(uv,depth);
+  float a=clamp((T-lag-H_ROUTE)/max(o*H_CLIMB,0.06),0.0,1.0);
+  float th=1.5*TAU+a*(0.5+o)*TAU, k=smoothstep(0.35,1.0,a), r=rad*(1.0-k);
+  vec2 p=vec2(mix(cx,tg.x,k)+r*cos(th), mix(bot,tg.y,a)+0.3*r*sin(th));
+  return p+jt*(1.0-k);
 }
 `;
 
@@ -105,8 +197,7 @@ vec2 swarmHome(vec4 h){
   float y=mod(h.y*span-uScroll*0.3,span)-WRAP_M;
   return vec2(h.x*uViewport.x,y);
 }
-vec2 traceTarget(vec4 h, float seed, out float s){
-  float u=traceU(h);
+vec2 traceLine(float u, float seed, out float s){
   // The window is one clip wide; uPhase is the playback position in clips.
   s=traceAt((u+uPhase)*uClipN);
   float y=uTraceRect.y+uTraceRect.w*0.5-s*uTraceRect.w*0.44;
@@ -114,12 +205,14 @@ vec2 traceTarget(vec4 h, float seed, out float s){
   y+=(fract(seed*7.13)-0.5)*2.4;
   return vec2(uTraceRect.x+u*uTraceRect.z,y);
 }
+vec2 traceTarget(vec4 h, float seed, out float s){ return traceLine(traceU(h),seed,s); }
 // Where a particle goes in the hero: its point on the hand, or on the trace.
 vec2 heroTarget(vec4 h, float seed, vec2 uv, out float s, out float depth){
   depth=0.0;
   if(isHand(h)){ s=0.45; return handTarget(uv,depth); }
   return traceTarget(h,seed,s);
 }
+${reformChunk}
 `;
 
 export const velocityShader = /* glsl */ `
@@ -160,6 +253,14 @@ void main(){
   const float k=60.0;
   vec2 aSpring=k*to-2.0*sqrt(k)*vel;
   vec2 aTrace=mix(aSpring,(seek-vel)*3.0,smoothstep(8.0,40.0,dist));
+  // Re-forming: chase a waypoint along the drawn route, matching its speed, until landed.
+  float done=reformDone(H,seed,uv);
+  if(done<0.5){
+    vec2 w0=reformWaypoint(H,seed,uv,uReform);
+    vec2 wv=(reformWaypoint(H,seed,uv,uReform+1.0/30.0)-w0)*30.0;
+    vec2 des=wv+(w0-pos)*6.0; float dl=length(des); if(dl>2600.0) des*=2600.0/dl;
+    aTrace=(des-vel)*12.0;
+  }
 
   float fw=formWeight(H,seed,uForm);
   vec2 acc=mix(aSwarm,aTrace,fw);
@@ -170,6 +271,9 @@ void main(){
   if(r>0.001) acc+=d/r*push*1800.0;
 
   vel+=acc*uDt;
+  // Running along the line, the position shader places it exactly; carry no speed of its own, so
+  // it stops dead on its spot when the line is complete.
+  if(done<0.5) vel*=1.0-reformOnLine(H,seed,uReform);
   // Activation: ink where the recording spikes or the pointer touched, tissue at rest.
   float act=max(fw*smoothstep(0.15,0.8,abs(s)), push);
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
@@ -180,6 +284,7 @@ void main(){
   float arrived;
   if(fw>0.85) arrived=(dist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
   else arrived=V.w>0.5 ? -1.0 : min(0.0,V.w+uDt/0.9);
+  if(done<0.5) arrived=0.0;
   if(uSnap>0.5){ vel=vec2(0.0); z=0.0; arrived=0.0; }
   gl_FragColor=vec4(vel,z,arrived);
 }
@@ -203,8 +308,11 @@ void main(){
   // Once the trace formation has settled, lock particles to the line: no spring lag while it plays.
   float s, depth; vec2 target=heroTarget(H,P.w,uv,s,depth);
   // Lock onto the line only once arrived, so re-forming is a swim, never a jump.
-  float lock=smoothstep(0.85,1.0,fw)*max(V.w,1.0-smoothstep(3.0,24.0,length(target-pos)));
+  float lock=smoothstep(0.85,1.0,fw)*max(V.w,1.0-smoothstep(3.0,24.0,length(target-pos)))*reformDone(H,P.w,uv);
   if(lock>0.0) pos=mix(pos,target,lock);
+  // Re-forming, running along the line to its spot: ride the playing line exactly, so it draws clean.
+  float ol=reformOnLine(H,P.w,uReform)*(1.0-reformDone(H,P.w,uv));
+  if(ol>0.0) pos=mix(pos,reformWaypoint(H,P.w,uv,uReform),ol);
   if(uSnap>0.5) pos=swarmHome(H);
   // z carries the hand's depth to the point shader (near dots larger and darker).
   gl_FragColor=vec4(pos,depth*fw,P.w);
@@ -218,8 +326,7 @@ uniform sampler2D uHome;
 uniform vec2 uViewport;
 uniform float uPixelRatio;
 uniform float uForm;
-uniform float uHandOn;
-const float HAND_SPLIT=0.6;
+${formChunk}
 attribute vec2 ref;
 varying float vAct;
 varying vec2 vScreen;
@@ -227,13 +334,6 @@ varying float vRank;
 varying float vSeed;
 varying float vRecruit;
 varying float vDepth;
-bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
-float traceU(vec4 h){ return uHandOn>0.5 ? h.w/HAND_SPLIT : h.w; }
-float formWeight(vec4 h, float seed, float form){
-  float st=isHand(h) ? 0.78+0.2*fract(seed*7.31) : traceU(h)*0.72+0.06*fract(seed*3.7);
-  float f=clamp((form-st*0.7)/0.3,0.0,1.0);
-  return f*f*(3.0-2.0*f);
-}
 void main(){
   vec4 P=texture2D(texPos,ref); vec4 V=texture2D(texVel,ref); vec4 H=texture2D(uHome,ref);
   vec2 ndc=vec2(P.x/uViewport.x*2.0-1.0, 1.0-P.y/uViewport.y*2.0);

@@ -1,6 +1,6 @@
 /**
  * Progressive enhancement entry. The page is complete without this file.
- * After load and an idle moment it checks the GPU, then fetches the Field chunk.
+ * As the page loads it checks the GPU and fetches the Field chunk; the field starts at load.
  * ?field=off skips it; ?tier=high|mid|static forces a tier.
  */
 import { bus } from './bus';
@@ -12,7 +12,7 @@ import { threadHeights, threadRect } from './thread-line';
 type Stats = { fps: number; tier: string; particles: number; frames: number };
 declare global {
   interface Window {
-    __signal?: { state: string; reason?: string; stats?: Stats; bootMs?: number };
+    __signal?: { state: string; reason?: string; stats?: Stats; bootMs?: number; hand?: Promise<ArrayBuffer> };
   }
 }
 
@@ -29,11 +29,7 @@ addEventListener('pagereveal', (e) => {
   if (vt) revealed = Promise.race([vt.finished.catch(() => {}), new Promise((r) => setTimeout(r, 1500))]);
 });
 
-function idle(fn: () => void): void {
-  const go = () => ('requestIdleCallback' in window ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200));
-  if (document.readyState === 'complete') go();
-  else addEventListener('load', go, { once: true });
-}
+const loaded = new Promise<void>((r) => (document.readyState === 'complete' ? r() : addEventListener('load', () => r(), { once: true })));
 
 async function start(): Promise<void> {
   if (new URLSearchParams(location.search).get('field') === 'off') {
@@ -43,13 +39,14 @@ async function start(): Promise<void> {
   observeSections();
   const caps = detectCapabilities();
   // An earlier page this visit already measured this device: start where its probe ended up.
+  // Only a running tier is remembered: one slow moment must never switch the field off for a visit.
   const saved = readSession();
-  const known = !new URLSearchParams(location.search).has('tier') && caps.tier !== 'static' && !!saved.tier;
+  const known = !new URLSearchParams(location.search).has('tier') && caps.tier !== 'static' && (saved.tier === 'high' || saved.tier === 'mid');
   if (known) {
     caps.tier = saved.tier!;
     caps.reason = `${saved.reason ?? 'measured'}, earlier this visit`;
   }
-  bus.on('field:tier', ({ tier, reason }) => writeSession({ tier, reason }));
+  bus.on('field:tier', ({ tier, reason }) => tier !== 'static' && writeSession({ tier, reason }));
   if (caps.tier === 'static') {
     info.state = 'static';
     info.reason = caps.reason;
@@ -57,9 +54,16 @@ async function start(): Promise<void> {
     return;
   }
 
+  // Fetch the field's code and the hand's points now, alongside the page, rather than after it:
+  // waiting for load and then an idle moment kept a first visit without particles for seconds.
   const t0 = performance.now();
   performance.mark('field:import');
-  const [{ Field }] = await Promise.all([import('../field/Field'), revealed]);
+  const mod = import('../field/Field');
+  if ((document.querySelector('.hero-hand')?.getBoundingClientRect().width ?? 0) > 0) {
+    info.hand = fetch('/hand.bin').then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`hand points: ${r.status}`))));
+    info.hand.catch(() => {});
+  }
+  const [{ Field }] = await Promise.all([mod, loaded, revealed]);
   performance.mark('field:imported');
   const layer = document.createElement('div');
   layer.className = 'field-layer';
@@ -175,4 +179,4 @@ function demoWhenNear(): void {
 
 rememberPages();
 demoWhenNear();
-idle(() => void start());
+void start();

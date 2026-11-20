@@ -108,7 +108,7 @@ export interface FieldOptions {
   tier: Exclude<Tier, 'static'>;
   halfFloat: boolean;
   reducedMotion: boolean;
-  /** Called when the field gives up (too slow) so the page can show the static SVG again. */
+  /** Called when the field can't run (WebGL lost) so the page can show the static SVG again. */
   onFallback: (reason: string) => void;
   /** Called after the first rendered frame, so the SVG can fade out under the particles. */
   onFirstFrame: () => void;
@@ -154,7 +154,7 @@ export class Field {
   #grip = 0;
   // Only fetch the hand where it will show: the hero anchor is hidden on narrow screens.
   #handPts: Promise<HandData | null> = (document.querySelector('.hero-hand')?.getBoundingClientRect().width ?? 0) > 0
-    ? loadHand().catch(() => null)
+    ? loadHand(window.__signal?.hand ?? undefined).catch(() => null)
     : Promise.resolve(null);
   #handReady = false;
   #handData: HandData | null = null;
@@ -180,6 +180,8 @@ export class Field {
   #stepped = false;
   /** A slow probe at mid gets one more look before the field gives up: a load hitch is not a slow GPU. */
   #retried = false;
+  /** Still slow after the retry at mid: the canvas drops to 1x instead of the field switching off. */
+  #lean = false;
   #fade = 0;
   /** The thread: which line it draws (el), how far the pen has got, and a hand-over in progress. */
   #thread = { el: null as Element | null, pen: 0, arriving: 0, cards: [] as HTMLElement[] };
@@ -301,9 +303,10 @@ export class Field {
     if (this.#disposed) return;
     // Compiled off the main thread where the driver allows it (KHR_parallel_shader_compile): a
     // blocking compile here froze the page for up to a second right as it arrived.
-    await this.#compileSim();
+    // A driver that trips over the early compile just compiles on first use instead.
+    await this.#compileSim().catch(() => {});
     if (this.#disposed) return;
-    await this.#renderer.compileAsync(this.#scene, this.#camera);
+    await this.#renderer.compileAsync(this.#scene, this.#camera).catch(() => {});
     performance.mark('field:compiled');
     if (this.#disposed) return;
     this.#step(1 / 60);
@@ -676,6 +679,7 @@ export class Field {
 
   #pixelRatio(): number {
     const dpr = devicePixelRatio || 1;
+    if (this.#lean) return 1;
     if (this.stats.tier === 'high') return Math.min(dpr, 2);
     // Mid: a large sharp screen costs the GPU more in pixels than in particles, and a slow GPU is
     // why it is on mid. Keep the canvas near MID_PIXELS; the dots keep their size, just a touch softer.
@@ -719,7 +723,11 @@ export class Field {
         this.#probeDone = false;
         this.#probeAt = this.#time + 2;
       } else {
-        this.#o.onFallback(`measured ${fps} fps at ${this.stats.particles} particles`);
+        // Slow, but still moving: keep the particles, they are the page. Drop the canvas to one
+        // device pixel per CSS pixel, the cheapest it goes without changing what is drawn.
+        this.#lean = true;
+        this.#resize();
+        bus.emit('field:tier', { tier: this.stats.tier, particles: this.stats.particles, reason: `slow GPU (${fps} fps), canvas at 1x` });
       }
       return;
     }

@@ -43,10 +43,14 @@ export interface HandData {
 }
 
 /** Fetch and decode: float32 scale, then int16 x, y, z, skin per point. */
-export async function loadHand(url = HAND_URL): Promise<HandData> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`hand points: ${res.status}`);
-  const buf = await res.arrayBuffer();
+/** From the URL, or from a fetch already under way (boot.ts starts it alongside the page). */
+export async function loadHand(src: string | Promise<ArrayBuffer> = HAND_URL): Promise<HandData> {
+  let buf: ArrayBuffer;
+  if (typeof src === 'string') {
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`hand points: ${res.status}`);
+    buf = await res.arrayBuffer();
+  } else buf = await src;
   const scale = new DataView(buf).getFloat32(0, true);
   const q = new Int16Array(buf, 4);
   const m = q.length / 4;

@@ -10,7 +10,7 @@ links:
   demo: https://warden-beryl.vercel.app/dossier
   extra:
     - { label: Live target endpoint, href: "https://warden-beryl.vercel.app" }
-    - { label: Live dashboard (molab, cold start about 30 s), href: "https://molab.marimo.io/notebooks/nb_y8TEU4noYmk5XK3NnTWC8K/app" }
+    - { label: "Live dashboard (molab, cold start about 30 s)", href: "https://molab.marimo.io/notebooks/nb_y8TEU4noYmk5XK3NnTWC8K/app" }
 keyMetric:
   label: enforcement breach rate, 3,827 attacks
   value: "0.1%"

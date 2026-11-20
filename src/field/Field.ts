@@ -142,10 +142,16 @@ export class Field {
   #bleedTarget = 0;
   /** The demo: wired up (stage), eased weights, and what the classifier last said. */
   #demo = {
-    stage: false, map: false, on: 0, env: 0, envTo: 0, picked: -1, loss: 0, hand: 0, seen: false,
+    stage: false, map: false, on: 0, view: 0, env: 0, envTo: 0, picked: -1, loss: 0, hand: 0, seen: false,
     pose: 'rest' as keyof typeof POSES,
   };
   #demoPose: Pose = POSES.rest.map((q) => [...q] as Pose[number]);
+  /**
+   * The demo's map sits in a sticky column on wide screens. While it is stuck the browser keeps it
+   * still on screen between frames, so the canvas has to stay still too (fixed to the viewport),
+   * not travel with the page until the next frame catches up and pulls the clouds back.
+   */
+  #pinToViewport = false;
   #stillTimer = 0;
   #pointer = { x: -1e4, y: -1e4, strength: 0, lastMove: 0 };
   #probe: number[] = [];
@@ -221,6 +227,7 @@ export class Field {
       uFade: { value: 0 },
       uDemo: { value: [0, 0, 0, 0] },
       uDemoRect: { value: [0, -1000, 1, 1] },
+      uDemoVel: { value: [0, 0] },
       uMapC: { value: Array.from({ length: 4 }, () => new Vector4(0.5, 0.5, 0.05, 0)) },
       uMapL: { value: new Vector4(0.05, 0.05, 0.05, 0.05) },
     };
@@ -493,7 +500,7 @@ export class Field {
     this.#updateDemo(dt);
     this.#updateHand(dt);
     // The demo's stain shows only while the demo is on screen; the hero is never stained by it.
-    const bleedTo = Math.max(this.#bleedTarget, this.#demo.loss * this.#demo.on);
+    const bleedTo = Math.max(this.#bleedTarget, this.#demo.loss * this.#demo.view);
     this.#bleed += (bleedTo - this.#bleed) * (1 - Math.exp(-dt * 2.5));
     u.uBleed!.value = this.#bleed;
     this.#scrollDy = 0;
@@ -585,7 +592,14 @@ export class Field {
     this.#shared.uFade!.value = this.#fade;
     // Everything this frame was placed from rects read at this scroll position; pin the canvas
     // there, so if the page scrolls before the next frame the drawing travels with it.
-    this.#o.canvas.style.transform = `translate3d(${scrollX}px,${scrollY}px,0)`;
+    const cs = this.#o.canvas.style;
+    if (this.#pinToViewport) {
+      cs.position = 'fixed';
+      cs.transform = 'none';
+    } else {
+      cs.position = '';
+      cs.transform = `translate3d(${scrollX}px,${scrollY}px,0)`;
+    }
     this.#renderer.render(this.#scene, this.#camera);
   }
 
@@ -710,16 +724,32 @@ export class Field {
     const u = this.#shared;
     const r = d.stage ? document.querySelector('[data-field-stage]')?.getBoundingClientRect() : undefined;
     const free = this.#formTo() === 0 && this.#form.value < 0.02 && this.#reform.start < 0;
-    const want = !!r && r.width > 0 && r.bottom > 0 && r.top < innerHeight && free;
+    // Held within a screen of the viewport, so the clouds are already formed when the map scrolls
+    // (back) into view instead of streaming in from the flock each time.
+    const want = !!r && r.width > 0 && r.bottom > -innerHeight && r.top < 2 * innerHeight && free;
     if (!free || !d.stage || !d.map) d.on = 0;
     else d.on += ((want ? 1 : 0) - d.on) * (1 - Math.exp(-dt * 3));
     if (d.on < 0.002) d.on = 0;
+    const inView = !!r && r.bottom > 0 && r.top < innerHeight;
+    d.view = Math.min(d.on, d.view + ((inView ? 1 : 0) - d.view) * (1 - Math.exp(-dt * 3)));
     const up = d.envTo > d.env;
     d.env += (d.envTo - d.env) * (1 - Math.exp(-dt * (up ? 14 : 4)));
     const slot = document.querySelector('[data-field-hand]')?.getBoundingClientRect();
     const handOk = this.#handReady && d.seen && !!slot && slot.width > 0 && slot.height > 0;
     d.hand += ((handOk ? 1 : 0) - d.hand) * (1 - Math.exp(-dt * 3));
-    if (r) u.uDemoRect!.value = [r.x, r.y, r.width, r.height];
+    if (r) {
+      // How fast the map is moving on screen (a scroll), so dots swimming to it move with it and
+      // don't trail behind; px/s, smoothed a little against uneven frame times.
+      const [px, py] = u.uDemoRect!.value as number[];
+      const v = u.uDemoVel!.value as number[];
+      const k = dt > 0 && py! > -999 ? 1 - Math.exp(-dt / 0.03) : 0;
+      if (k > 0) {
+        v[0] = v[0]! + ((r.x - px!) / dt - v[0]!) * k;
+        v[1] = v[1]! + ((r.y - py!) / dt - v[1]!) * k;
+      }
+      u.uDemoRect!.value = [r.x, r.y, r.width, r.height];
+    }
+    this.#pinToViewport = d.on > 0 && stuck(document.querySelector('[data-field-sticky]'));
     u.uDemo!.value = [d.on, d.env, d.picked, d.hand];
     // The hand eases toward the pose the classifier last read with confidence.
     const k = this.#o.reducedMotion ? 1 : 1 - Math.exp(-dt / DEMO.poseS);
@@ -1035,4 +1065,12 @@ function playbackPhase(): number {
   const anim = document.querySelector('.hero-trace .tape')?.getAnimations()[0];
   const ms = typeof anim?.currentTime === 'number' ? anim.currentTime : performance.now();
   return ((ms / 1000) / tracePlayback.clipS) % tracePlayback.clips;
+}
+
+/** Whether a position: sticky element is currently held at its offset. */
+function stuck(el: Element | null): boolean {
+  if (!el) return false;
+  const cs = getComputedStyle(el);
+  if (cs.position !== 'sticky') return false;
+  return Math.abs(el.getBoundingClientRect().top - parseFloat(cs.top)) < 0.5;
 }

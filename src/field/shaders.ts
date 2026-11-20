@@ -2,7 +2,7 @@ import { BONES, HAND_CAM } from './hand';
 import { REFORM, ROUTE_N } from './reform';
 
 /** Demo map: the share of trace members that draw the four gesture clouds, and their extent in SDs. */
-export const DEMO = { cloudShare: 0.5, cloudSd: 2.2 };
+export const DEMO = { cloudShare: 0.5, cloudSd: 2.0 };
 
 const f = (n: number) => n.toFixed(3);
 
@@ -43,6 +43,7 @@ float formWeightV(vec4 h, float seed, float form, vec4 V){
 const demoWeightChunk = /* glsl */ `
 uniform vec4 uDemo;         // x on 0..1, y envelope 0..1, z the picked gesture (-1: none), w hand 0..1
 uniform vec4 uDemoRect;     // the map: x, y, w, h in CSS px
+uniform vec2 uDemoVel;      // how fast the map moves on screen (scrolling), px/s
 const float CLOUD_SHARE=${f(DEMO.cloudShare)};
 float cloudOf(float seed){ return floor(fract(seed*5.31)*4.0); }
 float demoWeight(vec4 h, float seed){
@@ -341,8 +342,11 @@ void main(){
   float ddepth; vec2 dt=demoTarget(H,seed,uv,ddepth);
   vec2 dto=dt-pos; float ddist=length(dto);
   if(dw>0.0){
+    // Swim in the map's own frame: while the page scrolls the dots ride along with it, so a
+    // cloud that is still forming keeps its shape instead of trailing behind the map.
     vec2 dseek=dto*2.6; float dss=length(dseek); if(dss>900.0) dseek*=900.0/dss;
-    vec2 aDemo=mix(k*dto-2.0*sqrt(k)*vel,(dseek-vel)*3.5,smoothstep(8.0,40.0,ddist));
+    dseek+=uDemoVel;
+    vec2 aDemo=mix(k*dto-2.0*sqrt(k)*(vel-uDemoVel),(dseek-vel)*3.5,smoothstep(8.0,40.0,ddist));
     acc=mix(acc,aDemo,dw);
   }
 

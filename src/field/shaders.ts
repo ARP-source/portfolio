@@ -299,9 +299,11 @@ void main(){
   float fw=formWeight(H,P.w,uForm);
   // Swarm particles move rigidly with their parallax homes, so scrolling never stretches them.
   pos.y-=uScrollDy*0.3*(1.0-fw);
-  if(fw<0.5){
+  // Keep each particle within half a band of its home: one wrap, never a band that hops every
+  // frame. Only off screen, so a dot never vanishes on one side and reappears on the other: a
+  // released dot swims down from the shape it left instead of popping up somewhere else.
+  if(fw<0.5 && (pos.y<-WRAP_M || pos.y>uViewport.y+WRAP_M)){
     float span=uViewport.y+2.0*WRAP_M;
-    // Keep each particle within half a band of its home: one wrap, never a band that hops every frame.
     float hy=swarmHome(H).y;
     pos.y=hy+mod(pos.y-hy+0.5*span,span)-0.5*span;
   }
@@ -340,8 +342,9 @@ void main(){
   gl_Position=vec4(ndc,0.0,1.0);
   vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w; vDepth=P.z;
   vRecruit=formWeight(H,P.w,uForm);
-  // Swarm dots 1.4-2.5 px; recruited dots swell a little; on the hand, nearer dots are larger.
-  gl_PointSize=(mix(1.4,2.5,H.z*H.z)+vRecruit*0.9)*(1.0+0.25*P.z)*uPixelRatio;
+  // Swarm dots 2-3 px, big enough to read as ink; recruited dots swell a little; on the hand,
+  // nearer dots are larger.
+  gl_PointSize=(mix(2.0,3.0,H.z*H.z)+vRecruit*0.6)*(1.0+0.25*P.z)*uPixelRatio;
 }
 `;
 
@@ -374,10 +377,10 @@ void main(){
   // Recruitment by darkness: resting dots are tissue, joining the trace stains them ink,
   // and spikes in the recording (or the visitor's pointer) push them darker still.
   float recruit=clamp(max(vRecruit,vAct),0.0,1.0);
-  vec3 rest=mix(uTissue,uInkDim,0.6+0.4*vRank*vRank);
+  vec3 rest=mix(uInkDim,uInk,0.35*vRank*vRank);
   vec3 col=mix(rest,uInk,recruit);
   col=mix(col,uDrift,uBleed*recruit);
-  float a=mix(mix(0.85,1.0,vRank), mix(0.8,0.95,vAct), recruit);
+  float a=mix(mix(0.9,1.0,vRank), mix(0.8,0.95,vAct), recruit);
   // Far side of the hand is paler, so it reads as a solid turning in space.
   a*=clamp(0.78+0.45*vDepth,0.4,1.0);
 

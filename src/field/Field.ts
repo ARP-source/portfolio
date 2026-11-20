@@ -23,7 +23,7 @@ import { durations, palette, tracePlayback } from '../tokens/tokens';
 import { TIER_SIZE } from './tiers';
 import { pointsFragment, pointsVertex, positionShader, velocityShader } from './shaders';
 import trace from '../data/hero-trace.json';
-import { handSamples, handWorld, loadHand, projectHand } from './hand';
+import { BONES, POSES, SEQUENCE, blendPose, handWorld, loadHand, poseBones, projectHand, type HandData } from './hand';
 
 /** Formations implemented in v1. The rest of the contract arrives in later phases. */
 const FORM_VALUE: Partial<Record<Formation, number>> = { swarm: 0, trace: 1 };
@@ -44,11 +44,13 @@ const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number
 const PARALLAX = 0.3, WRAP_M = 40;
 /** How long the hero takes to dissolve into the swarm; each particle's own release is a slice of it. */
 const RELEASE_MS = 2600;
+/** Re-forming is a little quicker than dissolving. */
+const FORM_MS = 1900;
 const TEXT_SELECTOR =
   'main h1, main h2, main h3, main p, main li, main dt, main dd, main th, main td, main figcaption, main a, main .meta, header a, footer a, footer p';
 
 /** Hand: one slow turn every spinS seconds; a fixed three-quarter view with reduced motion. */
-const HAND = { spinS: 30, reducedSpin: -28 };
+const HAND = { spinS: 30, reducedSpin: -28, holdS: 6, morphS: 1.6 };
 const HAND_SPLIT = 0.6;
 
 interface Sim {
@@ -94,9 +96,14 @@ export class Field {
   #scrollDy = 0;
   #form = { from: 0, to: 0, start: 0, value: 0 };
   #handM: Float32Array<ArrayBuffer> = handWorld(0);
-  #handPts: Promise<Float32Array | null> = loadHand().catch(() => null);
+  #bones = new Float32Array(BONES * 16);
+  #grip = 0;
+  // Only fetch the hand where it will show: the hero anchor is hidden on narrow screens.
+  #handPts: Promise<HandData | null> = (document.querySelector('.hero-hand')?.getBoundingClientRect().width ?? 0) > 0
+    ? loadHand().catch(() => null)
+    : Promise.resolve(null);
   #handReady = false;
-  #handData: Float32Array | null = null;
+  #handData: HandData | null = null;
   #bleed = 0;
   #bleedTarget = 0;
   #pointer = { x: -1e4, y: -1e4, strength: 0, lastMove: 0 };
@@ -159,7 +166,7 @@ export class Field {
       uBleed: { value: 0 },
       uHandOn: { value: 0 },
       uHandRect: { value: [0, -1000, 1, 1] },
-      uHandM: { value: this.#handM },
+      uBones: { value: this.#bones },
       uHandLocal: { value: null },
       uMask: { value: tex },
       uFade: { value: 0 },
@@ -263,10 +270,7 @@ export class Field {
     const n = size * size;
 
     // Swarm homes: a jittered grid, so the idle field covers the page evenly.
-    // Trace u is the rank of each home's x, so particles that sit together in the swarm
-    // sit together on the line and a morph moves neighbourhoods, not individuals.
     const homes = new Float32Array(n * 4);
-    const order = new Uint32Array(n);
     const cols = Math.ceil(Math.sqrt(n * (this.#vw / Math.max(this.#vh, 1))));
     const rows = Math.ceil(n / cols);
     for (let i = 0; i < n; i++) {
@@ -274,21 +278,54 @@ export class Field {
       homes[i * 4] = (gx + Math.random()) / cols;
       homes[i * 4 + 1] = (gy + Math.random()) / rows;
       homes[i * 4 + 2] = Math.random();
-      order[i] = i;
     }
-    order.sort((a, b) => homes[a * 4]! - homes[b * 4]!);
-    for (let rank = 0; rank < n; rank++) homes[order[rank]! * 4 + 3] = rank / (n - 1);
+    // Every particle has one spot in the swarm and one in each shape, and the two correspond:
+    // the left 60 % of the swarm (by x) makes the trace, the right 40 % the hand. Within each,
+    // particles are taken column by column, top to bottom, and matched to shape points taken
+    // the same way, so a strip of the line unrolls into a column of the swarm and a patch of the
+    // hand into the patch beside it. Breaking up and re-forming retrace the same short paths.
+    // H.w: trace members 0..HAND_SPLIT (their order along the line), hand members above it.
+    const byX = Array.from({ length: n }, (_, i) => i).sort((a, b) => homes[a * 4]! - homes[b * 4]!);
+    const nt = Math.round(n * HAND_SPLIT);
+    const columnOrder = (ids: number[], ncols: number, key: (i: number) => [number, number]) => {
+      const per = Math.ceil(ids.length / ncols);
+      const out: number[] = [];
+      for (let c = 0; c < ids.length; c += per) {
+        out.push(...ids.slice(c, c + per).sort((a, b) => key(a)[1] - key(b)[1]));
+      }
+      return out;
+    };
+    const traceCols = Math.max(1, Math.round(cols * HAND_SPLIT));
+    const traceIds = columnOrder(byX.slice(0, nt), traceCols, (i) => [homes[i * 4]!, homes[i * 4 + 1]!]);
+    traceIds.forEach((id, k) => (homes[id * 4 + 3] = (k / nt) * HAND_SPLIT));
+    const handIds = columnOrder(byX.slice(nt), Math.max(1, cols - traceCols), (i) => [homes[i * 4]!, homes[i * 4 + 1]!]);
+    handIds.forEach((id, k) => (homes[id * 4 + 3] = HAND_SPLIT + ((k + 1) / handIds.length) * (1 - HAND_SPLIT)));
     const home = new DataTexture(homes, size, size, RGBAFormat, FloatType);
     home.minFilter = home.magFilter = NearestFilter;
     home.needsUpdate = true;
 
-    const handLocal = handSamples(this.#handData ?? new Float32Array(3), n);
-    this.#handReady = this.#handData !== null;
+    // Hand points for hand members, matched the same way (columns by screen x, rows by height).
+    const hd = this.#handData;
+    this.#handReady = hd !== null;
+    const handLocal = new Float32Array(n * 4);
+    if (hd) {
+      const m = hd.skin.length;
+      const pick = Array.from({ length: handIds.length }, (_, k) => Math.floor((k * m) / handIds.length));
+      const ordered = columnOrder(
+        pick.sort((a, b) => hd.xyz[a * 3]! - hd.xyz[b * 3]!),
+        Math.max(1, cols - traceCols),
+        (j) => [hd.xyz[j * 3]!, -hd.xyz[j * 3 + 1]!],
+      );
+      handIds.forEach((id, k) => {
+        const j = ordered[k]!;
+        handLocal.set([hd.xyz[j * 3]!, hd.xyz[j * 3 + 1]!, hd.xyz[j * 3 + 2]!, hd.skin[j]!], id * 4);
+      });
+    }
     const handTex = new DataTexture(handLocal, size, size, RGBAFormat, FloatType);
     handTex.minFilter = handTex.magFilter = NearestFilter;
     handTex.needsUpdate = true;
     this.#shared.uHandLocal!.value = handTex;
-    this.#updateHand();
+    this.#updateHand(0);
 
     const p0 = gpu.createTexture();
     const v0 = gpu.createTexture();
@@ -298,11 +335,12 @@ export class Field {
     const [rx, ry, rw, rh] = this.#shared.uTraceRect!.value as number[];
     const onTrace = this.#form.value > 0.5;
     const pts = trace.points, last = pts.length - 1;
+    const handOn = this.#shared.uHandOn!.value === 1;
     for (let i = 0; i < n; i++) {
       const seed = Math.random();
-      const handOn = this.#shared.uHandOn!.value === 1;
       if (onTrace && handOn && homes[i * 4 + 3]! > HAND_SPLIT) {
-        const [hx, hy, hz] = projectHand(handLocal, i, this.#handM, this.#shared.uHandRect!.value as number[]);
+        const L = handLocal.subarray(i * 4, i * 4 + 4);
+        const [hx, hy, hz] = projectHand(L[0]!, L[1]!, L[2]!, L[3]!, this.#bones, this.#shared.uHandRect!.value as number[]);
         pa[i * 4] = hx; pa[i * 4 + 1] = hy; pa[i * 4 + 2] = hz;
       } else if (onTrace) {
         // Same target as traceTarget() in the shader, evaluated once on the CPU.
@@ -376,7 +414,7 @@ export class Field {
     u.uScrollDy!.value = this.#scrollDy;
     u.uScroll!.value = this.#scrollY;
     u.uPhase!.value = playbackPhase();
-    this.#updateHand();
+    this.#updateHand(dt);
     this.#bleed += (this.#bleedTarget - this.#bleed) * (1 - Math.exp(-dt * 2.5));
     u.uBleed!.value = this.#bleed;
     this.#scrollDy = 0;
@@ -400,7 +438,7 @@ export class Field {
     this.#time += dt;
 
     // An even sweep both ways, so particles let go (or join) one after another, not all at once.
-    const t = Math.min(1, (now - this.#form.start) / RELEASE_MS);
+    const t = Math.min(1, (now - this.#form.start) / (this.#form.to < this.#form.from ? RELEASE_MS : FORM_MS));
     const e = t * t * (3 - 2 * t);
     this.#form.value = this.#form.from + (this.#form.to - this.#form.from) * e;
 
@@ -502,16 +540,29 @@ export class Field {
     return el.getBoundingClientRect().top > this.#vh;
   }
 
-  /** Hand rect and the slow turn. Off where the hero has no room for it or the points failed to load. */
-  #updateHand(): void {
+  /** Hand rect, gesture (cycle + EMG grip) and the slow turn, as 16 skinning matrices. */
+  #updateHand(dt: number): void {
     const el = document.querySelector<HTMLElement>('.hero-hand');
     const r = el?.getBoundingClientRect();
     const on = this.#handReady && !!r && r.width > 0 && r.height > 0;
     this.#shared.uHandOn!.value = on ? 1 : 0;
     if (!on) return;
     this.#shared.uHandRect!.value = [r.x, r.y, r.width, r.height];
-    const spin = this.#o.reducedMotion ? HAND.reducedSpin : (this.#time / HAND.spinS) * 360 - 25;
-    handWorld(spin, 8, this.#handM);
+    const still = this.#o.reducedMotion;
+    const t = this.#time;
+    let pose = POSES.rest;
+    if (!still) {
+      const cycle = HAND.holdS + HAND.morphS;
+      const k = Math.max(0, Math.floor(t / cycle));
+      const a = POSES[SEQUENCE[k % SEQUENCE.length]!], b = POSES[SEQUENCE[(k + 1) % SEQUENCE.length]!];
+      const m = Math.min(1, Math.max(0, (t - k * cycle - HAND.holdS) / HAND.morphS));
+      pose = blendPose(a, b, m * m * (3 - 2 * m));
+    }
+    // Grip follows the EMG envelope where new samples enter the trace (its right end, under the hand).
+    const env = still ? 0 : envelopeAt(playbackPhase());
+    this.#grip += (Math.min(1, Math.max(0, (env - 0.12) / 0.35)) - this.#grip) * (1 - Math.exp(-dt * 4));
+    const spin = still ? HAND.reducedSpin : (t / HAND.spinS) * 360 - 25;
+    poseBones(pose, handWorld(spin, 8, this.#handM), this.#grip, this.#bones);
   }
 
   #updateTraceRect(): void {
@@ -663,6 +714,21 @@ export const DEFAULT_MASK: MaskMode = 'halo';
  * Playback position in trace lengths. Reads the static SVG's CSS animation clock when it exists,
  * so the particles pick up the line exactly where the SVG left it.
  */
+function traceSample(u: number, phase: number): number {
+  const pts = trace.points, last = pts.length - 1;
+  const v = (u + phase) * 0.5;
+  const x = (1 - Math.abs(1 - 2 * (v - Math.floor(v)))) * last;
+  const k = Math.floor(x), f = x - k;
+  return pts[k]! * (1 - f) + pts[Math.min(k + 1, last)]! * f;
+}
+
+/** Mean rectified EMG over the last tenth of the visible trace. */
+function envelopeAt(phase: number): number {
+  let sum = 0;
+  for (let i = 0; i < 24; i++) sum += Math.abs(traceSample(0.9 + i / 240, phase));
+  return sum / 24;
+}
+
 function playbackPhase(): number {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
   const anim = document.querySelector('.hero-trace .tape')?.getAnimations()[0];

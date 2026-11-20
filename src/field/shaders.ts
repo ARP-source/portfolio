@@ -1,4 +1,4 @@
-import { HAND_CAM } from './hand';
+import { BONES, HAND_CAM } from './hand';
 
 /**
  * GLSL for the Field. Units are CSS pixels in viewport space; y grows downward like the DOM.
@@ -48,8 +48,8 @@ vec2 curl2(vec3 p){
 const handChunk = /* glsl */ `
 uniform float uHandOn;
 uniform vec4 uHandRect;     // x, y, w, h in CSS px
-uniform mat4 uHandM;        // the hand's turn and tilt
-uniform sampler2D uHandLocal; // xyz point on the hand
+uniform mat4 uBones[${BONES}]; // skinning matrices: pose and turn
+uniform sampler2D uHandLocal; // xyz point on the hand, w packed skin (bone * 256 + parent weight * 255)
 const float HAND_SPLIT=0.6;
 const float HAND_CAM=${HAND_CAM.toFixed(1)};
 bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
@@ -60,7 +60,12 @@ float formWeight(vec4 h, float seed, float form){
   return f*f*(3.0-2.0*f);
 }
 vec2 handTarget(vec2 uv, out float depth){
-  vec3 w=(uHandM*vec4(texture2D(uHandLocal,uv).xyz,1.0)).xyz;
+  vec4 L=texture2D(uHandLocal,uv);
+  int b=int(floor(L.w/256.0+0.001));
+  float bl=mod(L.w,256.0)/255.0;
+  int pb=(b==0 || (b-1)-3*((b-1)/3)==0) ? 0 : b-1;
+  vec4 p=vec4(L.xyz,1.0);
+  vec3 w=mix((uBones[b]*p).xyz,(uBones[pb]*p).xyz,bl);
   float scale=min(uHandRect.w/2.2,uHandRect.z/1.9);
   float persp=HAND_CAM/(HAND_CAM-w.z);
   depth=w.z;
@@ -134,16 +139,22 @@ void main(){
   // group travels together and fans out, instead of every dot racing straight to its own home.
   vec2 school=curl2(vec3(pos/650.0,uTime*0.05+3.0));
   float sl=length(school); school=sl>0.001 ? school/sl : vec2(0.0);
-  vec2 desired=(home-pos)*0.8+school*70.0+flow*4.0;
-  float sp=length(desired); if(sp>320.0) desired*=320.0/sp;
-  vec2 aSwarm=(desired-vel)*2.0;
+  // Spooked: for a moment after a particle lets go of a shape it darts toward its spot in the
+  // swarm, fast and a little scattered, like krill when a predator shows, then settles back to
+  // the slow drift. V.w counts this down from -1 (see 'arrived' below).
+  float burst=max(-V.w,0.0);
+  vec2 dart=(home-pos)+vec2(snoise(vec3(seed*91.0,uTime*0.7,1.0)),snoise(vec3(seed*37.0,uTime*0.7,5.0)))*90.0*burst;
+  vec2 desired=mix((home-pos)*0.8+school*70.0+flow*4.0, dart*3.0, burst);
+  float cap=320.0+760.0*burst;
+  float sp=length(desired); if(sp>cap) desired*=cap/sp;
+  vec2 aSwarm=(desired-vel)*(2.0+5.0*burst);
 
   // Hero: swim to a point on the hand or the recorded EMG line at a capped speed, the same
   // unhurried pace as the break-up, then settle on it with a stiff spring once close.
   float s, depth; vec2 target=heroTarget(H,seed,uv,s,depth);
   vec2 to=target-pos; float dist=length(to);
   vec2 seek=to*2.2+school*40.0*smoothstep(40.0,200.0,dist);
-  float ss=length(seek); if(ss>420.0) seek*=420.0/ss;
+  float ss=length(seek); if(ss>560.0) seek*=560.0/ss;
   const float k=60.0;
   vec2 aSpring=k*to-2.0*sqrt(k)*vel;
   vec2 aTrace=mix(aSpring,(seek-vel)*3.0,smoothstep(8.0,40.0,dist));
@@ -162,7 +173,11 @@ void main(){
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
   // Arrived: latches once a particle reaches its point, so it then rides the playing trace
   // exactly; it clears as soon as the particle is released.
-  float arrived=fw>0.85 ? (dist<10.0 || V.w>0.0 ? min(1.0,V.w+uDt*4.0) : 0.0) : 0.0;
+  // w > 0: arrived on its shape point (latched, ramps to 1). w < 0: just released, counting up
+  // from -1 to 0 over about 0.9 s (the burst above).
+  float arrived;
+  if(fw>0.85) arrived=(dist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
+  else arrived=V.w>0.5 ? -1.0 : min(0.0,V.w+uDt/0.9);
   if(uSnap>0.5){ vel=vec2(0.0); z=0.0; arrived=0.0; }
   gl_FragColor=vec4(vel,z,arrived);
 }

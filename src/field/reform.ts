@@ -16,6 +16,8 @@ export const REFORM = {
   traceRouteS: 2.1,
   traceSpreadS: 0.5,
   traceRunS: 1.0,
+  /** How long a trace dot sits on its spot before it counts as landed (longer than a frame at 3x). */
+  traceHoldS: 0.2,
   /** Hand: how far along the route its dots peel off (0..1), the swoop round to the wrist, and the
    *  rise to their points (the fingertips take the full time, the wrist about a third of it), so
    *  the hand fills in from the wrist up. */
@@ -23,7 +25,7 @@ export const REFORM = {
   handTurnS: 0.6,
   handClimbS: 1.1,
   get totalS() {
-    const trace = this.leaveS + this.traceRouteS + Math.max(this.traceSpreadS + 0.15, this.traceRunS);
+    const trace = this.leaveS + this.traceRouteS + Math.max(this.traceSpreadS + 0.15, this.traceRunS) + this.traceHoldS;
     const hand = this.leaveS + this.traceSpreadS + this.handBranch * (this.traceRouteS + this.traceSpreadS) +
       this.handTurnS + this.handClimbS;
     return Math.max(trace, hand);

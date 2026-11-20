@@ -133,7 +133,7 @@ vec2 flockSlot(vec4 h, float ft){
 const reformChunk = /* glsl */ `
 uniform vec2 uRoute[${ROUTE_N}];
 const float LEAVE=${f(REFORM.leaveS)};
-const float T_ROUTE=${f(REFORM.traceRouteS)}, T_SPREAD=${f(REFORM.traceSpreadS)}, T_RUN=${f(REFORM.traceRunS)};
+const float T_ROUTE=${f(REFORM.traceRouteS)}, T_SPREAD=${f(REFORM.traceSpreadS)}, T_RUN=${f(REFORM.traceRunS)}, T_HOLD=${f(REFORM.traceHoldS)};
 const float H_BRANCH=${f(REFORM.handBranch)}, H_TURN=${f(REFORM.handTurnS)}, H_CLIMB=${f(REFORM.handClimbS)};
 vec2 routeAt(float t){
   float x=clamp(t,0.0,1.0)*${ROUTE_N - 1}.0; int i=int(min(floor(x),${ROUTE_N - 2}.0));
@@ -155,9 +155,11 @@ float branchAt(vec4 h, float seed){
 }
 float reformDone(vec4 h, float seed, vec2 uv){
   if(uReform<0.0) return 1.0;
-  // Trace: lands when it reaches its spot, but never before it has fully joined the line (0.15 s).
+  // Trace: lands once it has sat on its spot for T_HOLD, never before it has fully joined the line.
+  // The hold matters: one frame can carry the clock past its arrival, and landing while still a
+  // frame short of the spot leaves it outside the lock, so it would wander back and leave a gap.
   float end=isHand(h) ? branchAt(h,seed)+H_TURN+H_CLIMB*(0.35+0.65*handHeight(uv))
-                      : arriveAt(h,seed)+max(traceU(h)*T_RUN,0.15);
+                      : arriveAt(h,seed)+max(traceU(h)*T_RUN,0.15)+T_HOLD;
   return step(end,uReform);
 }
 // Trace particles in the last stretch, running along the line: 0 before, ramps to 1 as they join it.
@@ -280,8 +282,10 @@ void main(){
     vec2 w0=reformWaypoint(H,seed,uv,uReform);
     // The route's own clock runs uPace times faster than real time during a hurried re-form.
     vec2 wv=(reformWaypoint(H,seed,uv,uReform+1.0/30.0)-w0)*30.0*uPace;
-    vec2 des=wv+(w0-pos)*6.0*uPace; float dl=length(des); if(dl>2600.0*uPace) des*=2600.0*uPace/dl;
-    aTrace=(des-vel)*12.0*uPace;
+    // Only the speed it chases scales; the steering gains stay put, or at 30 fps the chase
+    // overshoots and the line arrives in clumps with dots flung off it.
+    vec2 des=wv+(w0-pos)*6.0; float dl=length(des); if(dl>2600.0*uPace) des*=2600.0*uPace/dl;
+    aTrace=(des-vel)*12.0;
   }
 
   float fw=formWeightV(H,seed,uForm,V);

@@ -45,7 +45,7 @@ const W = 960, H = 160;
       <div class="map-row">
         <figure class="map">
           <svg class="map-svg" data-field-stage data-frame={JSON.stringify(frame)} viewBox={`0 0 ${S.w} ${S.h.toFixed(1)}`} aria-hidden="true" focusable="false">
-            <g data-ghosts hidden>{day1Clouds.map((c) => <path class="ghost" d={ellipsePath(c, 2, S.x, S.y)}></path>)}</g>
+            <g data-ghosts>{day1Clouds.map((c) => <path class="ghost" d={ellipsePath(c, 2, S.x, S.y)}></path>)}</g>
             <g data-clouds>{day1Clouds.map((c, k) => <path class="cloud" data-k={k} d={ellipsePath(c, 2, S.x, S.y)}></path>)}</g>
             <g data-dots></g>
             <g data-labels>
@@ -191,8 +191,9 @@ const W = 960, H = 160;
   :global(.dot.miss) { fill: var(--paper); stroke: var(--drift-deep); stroke-width: 1.4; }
   :global(.dot.old) { opacity: 0.35; }
   .map figcaption { margin-top: 1rem; }
-  .ghost-note { display: none; }
+  .ghost-note, [data-ghosts] { display: none; }
   .scope[data-recalibrated] .ghost-note { display: inline; }
+  .scope[data-recalibrated] [data-ghosts] { display: inline; }
   .hand-slot { display: none; }
   /* The hand forms only where the hero's hand does: the same width, so the same point cloud is loaded. */
   @media (min-width: 68rem) {

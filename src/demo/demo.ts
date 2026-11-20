@@ -234,7 +234,6 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
     st.stats = addWindows(st.stats, r.rows, r.labels);
     st.model = fit(st.stats);
     drawClouds(st.stats);
-    $('[data-ghosts]').removeAttribute('hidden');
     const a = accuracy(st.model, t29.rows, t29.labels);
     st.recal.push(a);
     root.dataset.recalibrating = '';
@@ -253,7 +252,6 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
     stop();
     Object.assign(st, { day: 1, rounds: 0, stats: emg.stats, model: base, recal: [] });
     drawClouds(emg.stats);
-    $('[data-ghosts]').setAttribute('hidden', '');
     delete root.dataset.skipped;
     delete root.dataset.recalibrating;
     delete scope.dataset.recalibrated;

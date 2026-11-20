@@ -91,43 +91,31 @@ vec2 handTarget(vec2 uv, out float depth){
 `;
 
 /**
- * The flock: away from the hero every dot flies in one murmuration, like starlings at dusk. Each dot
- * has a fixed place in the flock's body (its home mapped onto a disc, front to back by home x, so the
- * dots that make the right end of the trace and the hand fly at the front). The body travels a slow
- * loop across the screen; the back follows the front's path a moment later, so the flock bends
- * through its turns, and slow noise and a rolling density wave keep its outline changing. The
- * dots steer toward their places rather than sitting on them, so the whole thing flows.
+ * The flock: away from the hero every dot flies in one murmuration that fills the screen. Each dot
+ * has a fixed place in it (its home, spread a little past every edge). Slow noise folds the whole
+ * sheet so dense bands form, travel and dissolve like the dark ripples in a flock of starlings, a
+ * density wave rolls through it, and the sheet sways as one, the far side a moment behind the near
+ * side. The dots steer toward their places rather than sitting on them, so the whole thing flows.
  * It lives in viewport space and never wraps, so no dot ever appears out of nowhere.
  */
 const flockChunk = /* glsl */ `
 uniform float uFlockT;      // the flock's clock, seconds
 uniform vec3 uAnchor;       // xy: where the flock is held (the hero it just left), z: 0 held .. 1 free
 uniform float uKick;        // px: a scroll drags the flock a little, then it catches up
-vec2 flockPath(float t){
-  vec2 w=vec2(sin(t*0.17)+0.3*sin(t*0.41+1.3), sin(t*0.23+0.6)+0.3*sin(t*0.53+2.1))/1.3;
-  return uViewport*(vec2(0.5,0.5)+w*vec2(0.3,0.24));
-}
-// Square to disc, area-preserving (Shirley and Chiu), so the flock is evenly filled.
-vec2 toDisc(vec2 q){
-  if(abs(q.x)+abs(q.y)<1e-5) return vec2(0.0);
-  float r, a;
-  if(abs(q.x)>abs(q.y)){ r=q.x; a=0.7853982*(q.y/q.x); } else { r=q.y; a=1.5707963-0.7853982*(q.x/q.y); }
-  return r*vec2(cos(a),sin(a));
+vec2 flockSway(float t){
+  return vec2(sin(t*0.17)+0.3*sin(t*0.41+1.3), sin(t*0.23+0.6)+0.3*sin(t*0.53+2.1))/1.3;
 }
 vec2 flockSlot(vec4 h, float ft){
-  vec2 d=toDisc(h.xy*2.0-1.0);              // x: back (-1) to front (+1), y: across
+  vec2 d=h.xy*2.0-1.0;                        // -1..1 across the screen
   float tt=ft*0.09;
   d+=0.3*vec2(snoise(vec3(d*1.2,tt)),snoise(vec3(d*1.2+11.0,tt)));
-  d.x+=0.06*sin(d.x*5.0-ft*1.6);              // a density wave rolling back through the flock
-  float tau=ft-1.4*(1.0-d.x)*0.5;            // the back flies where the front was
-  vec2 p=flockPath(tau), T=flockPath(tau+0.25)-p;
-  T=length(T)>1e-3 ? normalize(T) : vec2(1.0,0.0);
-  vec2 N=vec2(-T.y,T.x);
-  float L=uViewport.x*(0.2+0.05*sin(ft*0.13)), W=uViewport.y*(0.15+0.05*sin(ft*0.19+1.0));
-  vec2 c=flockPath(ft);
-  vec2 body=p-c+T*d.x*L*0.5+N*d.y*W;
+  d.x+=0.05*sin(d.x*4.0-ft*1.3+d.y*1.5);     // a density wave rolling across
+  vec2 sway=flockSway(ft-1.2*(d.x+1.0)*0.5)*vec2(0.06,0.05);
+  vec2 c=uViewport*0.5;
+  vec2 body=(d*0.56+sway)*uViewport;          // a little past every edge
   float k=smoothstep(0.0,1.0,uAnchor.z);
-  return mix(uAnchor.xy,c,k)+body*mix(0.7,1.0,k)+vec2(0.0,uKick);
+  // Held, it is gathered small around the hero it left, then opens out to fill the screen.
+  return mix(uAnchor.xy+body*0.25,c+body,k)+vec2(0.0,uKick);
 }
 `;
 

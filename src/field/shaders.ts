@@ -126,22 +126,21 @@ vec2 flockSlot(vec4 h, float ft){
  * Every dot leaves the flock from wherever it is flying and merges into the drawn route, so the
  * flock pours out of itself as one stream. Trace dots arrive at the line's left end in order, the
  * one bound for the right end first, then run along the line to their spots, so it draws from left
- * to right like a pen. Hand dots ride the same stream, peel off over the hand, twirl down around it
- * and twirl back up, the lowest points landing first, so the hand forms from the wrist up.
+ * to right like a pen. Hand dots ride the same stream, peel off, swoop in at the wrist and rise to
+ * their points, the lowest landing first, so the hand fills in from the wrist to the fingertips.
  */
 const reformChunk = /* glsl */ `
 uniform vec2 uRoute[${ROUTE_N}];
 const float LEAVE=${f(REFORM.leaveS)};
 const float T_ROUTE=${f(REFORM.traceRouteS)}, T_SPREAD=${f(REFORM.traceSpreadS)}, T_RUN=${f(REFORM.traceRunS)};
-const float H_BRANCH=${f(REFORM.handBranch)}, H_TURN=${f(REFORM.handTurnS)}, H_DESC=${f(REFORM.handDescendS)};
-const float H_SPREAD=${f(REFORM.handSpreadS)}, H_CLIMB=${f(REFORM.handClimbS)};
-const float TAU=6.2831853;
+const float H_BRANCH=${f(REFORM.handBranch)}, H_TURN=${f(REFORM.handTurnS)}, H_CLIMB=${f(REFORM.handClimbS)};
 vec2 routeAt(float t){
   float x=clamp(t,0.0,1.0)*${ROUTE_N - 1}.0; int i=int(min(floor(x),${ROUTE_N - 2}.0));
   vec2 r=mix(uRoute[i],uRoute[i+1],x-float(i));
   return vec2(uTraceRect.x+r.x*uTraceRect.z, uTraceRect.y+uTraceRect.w*0.5+r.y*uTraceRect.z);
 }
-vec2 jitter(float seed){ return vec2(fract(seed*12.9898),fract(seed*78.233))-0.5; }
+// Two unrelated hashes: plain fract(seed*a), fract(seed*b) puts neighbours on parallel lines (dashes).
+vec2 jitter(float seed){ return vec2(fract(sin(seed*91.17)*43758.545),fract(sin(seed*57.31+1.7)*24634.634))-0.5; }
 float handHeight(vec2 uv){ return clamp((texture2D(uHandLocal,uv).y+1.0)*0.5,0.0,1.0); }
 // When it leaves the flock, and how long it then takes along the route (to the line's left end).
 float leaveAt(float seed){ return LEAVE*fract(seed*4.71); }
@@ -156,7 +155,7 @@ float branchAt(vec4 h, float seed){
 float reformDone(vec4 h, float seed, vec2 uv){
   if(uReform<0.0) return 1.0;
   // Trace: lands when it reaches its spot, but never before it has fully joined the line (0.15 s).
-  float end=isHand(h) ? branchAt(h,seed)+H_TURN+H_DESC+handHeight(uv)*(H_SPREAD+H_CLIMB)
+  float end=isHand(h) ? branchAt(h,seed)+H_TURN+H_CLIMB*(0.35+0.65*handHeight(uv))
                       : arriveAt(h,seed)+max(traceU(h)*T_RUN,0.15);
   return step(end,uReform);
 }
@@ -184,30 +183,25 @@ vec2 reformWaypoint(vec4 h, float seed, vec2 uv, float T){
   float tb=branchAt(h,seed);
   if(T<tb) return onRoute(h,seed,T);
   vec4 R4=uHandRect;
-  float cx=R4.x+R4.z*0.5, top=R4.y+R4.w*0.04, bot=R4.y+R4.w*0.96, rad=R4.z*0.38;
-  // Wide enough to stay a cloud, not a line of dots on one path; it closes in as each lands.
-  vec2 jt=jitter(seed)*vec2(70.0,50.0);
-  float tt=T-tb;
-  if(tt<H_TURN){
-    // Peel off: a curve from the stream to the top of the twirl.
-    float a=tt/H_TURN; a=a*a*(3.0-2.0*a);
-    vec2 p0=onRoute(h,seed,tb), p2=vec2(cx+rad,top), c=vec2(p2.x,min(p0.y,top)-R4.w*0.12);
-    return clamp((1.0-a)*(1.0-a)*p0+2.0*(1.0-a)*a*c+a*a*p2+jt*a,m,uViewport-m);
-  }
-  tt-=H_TURN;
-  if(tt<H_DESC){
-    float c=tt/H_DESC, th=c*1.5*TAU;
-    vec2 p=vec2(cx+rad*cos(th),mix(top,bot,c)+0.3*rad*sin(th));
-    return clamp(p+jt,m,uViewport-m);
-  }
-  tt-=H_DESC;
-  // Twirl back up to its own point, closing in on it over the last part of the climb.
   float o=handHeight(uv);
   float depth; vec2 tg=handTarget(uv,depth);
-  float a=clamp((tt-o*H_SPREAD)/max(o*H_CLIMB,0.06),0.0,1.0);
-  float th=1.5*TAU+a*(0.5+o)*TAU, k=smoothstep(0.35,1.0,a), r=rad*(1.0-k);
-  vec2 p=vec2(mix(cx,tg.x,k)+r*cos(th), mix(bot,tg.y,a)+0.3*r*sin(th));
-  return p+jt*(1.0-k);
+  // Wide enough to stay a cloud, not a line of dots on one path; it closes in as each lands.
+  vec2 jt=jitter(seed)*vec2(60.0,40.0);
+  // Where it enters: the wrist, under its own point, so the dots rise in columns, not through one spot.
+  vec2 wr=vec2(mix(R4.x+R4.z*0.5,tg.x,0.7),R4.y+R4.w*0.98);
+  float tt=T-tb;
+  if(tt<H_TURN){
+    // Peel off the stream and swoop round under the hand to the wrist.
+    float a=tt/H_TURN; a=a*a*(3.0-2.0*a);
+    vec2 p0=onRoute(h,seed,tb), c=vec2(max(p0.x,R4.x+R4.z*1.05),R4.y+R4.w*1.12);
+    return clamp((1.0-a)*(1.0-a)*p0+2.0*(1.0-a)*a*c+a*a*wr+jt,m,uViewport-m);
+  }
+  // Rise to its own point: the lowest arrive first, the fingertips last, with a slight sway that
+  // settles as it lands.
+  float a=clamp((tt-H_TURN)/(H_CLIMB*(0.35+0.65*o)),0.0,1.0);
+  float e=1.0-(1.0-a)*(1.0-a);
+  float side=(fract(seed*3.97)-0.5)*R4.z*0.25*sin(a*3.1416);
+  return mix(wr,tg,e)+vec2(side,0.0)+jt*(1.0-e);
 }
 `;
 

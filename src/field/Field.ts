@@ -46,9 +46,9 @@ const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number
  * The flock (flockChunk in shaders.ts). Leaving the hero it is held where the hero was and drifts
  * out to its own path over holdS; a scroll drags it by kick of the distance, then it catches up.
  */
-const FLOCK = { holdS: 6, kick: 0.25, kickMax: 0.22, catchUp: 1.2 };
+const FLOCK = { holdS: 2.5, kick: 0.25, kickMax: 0.22, catchUp: 1.2 };
 /** How long the hero takes to dissolve into the swarm; each particle's own release is a slice of it. */
-const RELEASE_MS = 2600;
+const RELEASE_MS = 1400;
 /** Re-forming in place (reduced motion, or scrolling back before the hero has fully let go). */
 const FORM_MS = 1900;
 const TEXT_SELECTOR =

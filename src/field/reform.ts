@@ -2,7 +2,7 @@
  * Re-forming the hero after the visitor scrolls back up. The flock streams out of itself along the
  * route Raag drew: up the left side, over the top, a small spin, and back down to the line's left
  * end, where the trace draws itself from left to right like a pen. The hand's dots ride the same
- * stream and peel off over the hand, twirling down around it and back up as it takes shape. The
+ * stream, peel off, swoop in at the wrist and rise into place, so it fills in from the wrist up. The
  * shader (reformChunk in shaders.ts) does the motion; this file holds the timing and the route.
  */
 
@@ -16,18 +16,16 @@ export const REFORM = {
   traceRouteS: 2.5,
   traceSpreadS: 0.5,
   traceRunS: 1.0,
-  /** Hand: how far along the route its dots peel off (0..1), the turn toward the hand, the twirl
-   *  down around it, and the climb: everyone climbs together and drops out at its own height, so
+  /** Hand: how far along the route its dots peel off (0..1), the swoop round to the wrist, and the
+   *  rise to their points (the fingertips take the full time, the wrist about a third of it), so
    *  the hand fills in from the wrist up. */
-  handBranch: 0.45,
-  handTurnS: 0.35,
-  handDescendS: 1.0,
-  handSpreadS: 0.2,
-  handClimbS: 0.9,
+  handBranch: 0.5,
+  handTurnS: 0.6,
+  handClimbS: 1.1,
   get totalS() {
     const trace = this.leaveS + this.traceRouteS + Math.max(this.traceSpreadS + 0.15, this.traceRunS);
     const hand = this.leaveS + this.traceSpreadS + this.handBranch * (this.traceRouteS + this.traceSpreadS) +
-      this.handTurnS + this.handDescendS + this.handSpreadS + this.handClimbS;
+      this.handTurnS + this.handClimbS;
     return Math.max(trace, hand);
   },
 };

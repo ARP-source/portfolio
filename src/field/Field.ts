@@ -50,7 +50,7 @@ const TEXT_SELECTOR =
   'main h1, main h2, main h3, main p, main li, main dt, main dd, main th, main td, main figcaption, main a, main .meta, header a, footer a, footer p';
 
 /** Hand: one slow turn every spinS seconds; a fixed three-quarter view with reduced motion. */
-const HAND = { spinS: 30, reducedSpin: -28, holdS: 6, morphS: 1.6 };
+const HAND = { spinS: 30, reducedSpin: -28 };
 const HAND_SPLIT = 0.6;
 
 interface Sim {
@@ -130,7 +130,9 @@ export class Field {
     // Production skips it so compilation stays off the main thread; dev keeps the error messages.
     this.#renderer.debug.checkShaderErrors = import.meta.env.DEV;
 
-    const pts = Float32Array.from(trace.points);
+    if (trace.clips.length !== SEQUENCE.length || trace.clips.some((c, i) => c.key !== SEQUENCE[i]))
+      throw new Error('hero-trace.json clips must match the hand SEQUENCE');
+    const pts = Float32Array.from(TAPE);
     this.#traceTex = new DataTexture(pts, pts.length, 1, RedFormat, FloatType);
     this.#traceTex.minFilter = this.#traceTex.magFilter = NearestFilter;
     this.#traceTex.needsUpdate = true;
@@ -158,6 +160,7 @@ export class Field {
       uMaskStrength: { value: MASK_MODES[maskMode()].strength },
       uTrace: { value: this.#traceTex },
       uTraceN: { value: pts.length },
+      uClipN: { value: PER_CLIP },
       uPixelRatio: { value: 1 },
       uTissue: { value: c(palette.tissue) },
       uInk: { value: c(palette.ink) },
@@ -334,7 +337,6 @@ export class Field {
     this.#updateTraceRect();
     const [rx, ry, rw, rh] = this.#shared.uTraceRect!.value as number[];
     const onTrace = this.#form.value > 0.5;
-    const pts = trace.points, last = pts.length - 1;
     const handOn = this.#shared.uHandOn!.value === 1;
     for (let i = 0; i < n; i++) {
       const seed = Math.random();
@@ -345,10 +347,7 @@ export class Field {
       } else if (onTrace) {
         // Same target as traceTarget() in the shader, evaluated once on the CPU.
         const u = handOn ? homes[i * 4 + 3]! / HAND_SPLIT : homes[i * 4 + 3]!;
-        const v = (u + (this.#shared.uPhase!.value as number)) * 0.5;
-        const x = (1 - Math.abs(1 - 2 * (v - Math.floor(v)))) * last;
-        const k = Math.floor(x), f = x - k;
-        const sv = pts[k]! * (1 - f) + pts[Math.min(k + 1, last)]! * f;
+        const sv = traceSample(u, this.#shared.uPhase!.value as number);
         pa[i * 4] = rx! + u * rw!;
         pa[i * 4 + 1] = ry! + rh! * 0.5 - sv * rh! * 0.44 + (((seed * 7.13) % 1) - 0.5) * 2.4;
       } else {
@@ -549,20 +548,23 @@ export class Field {
     if (!on) return;
     this.#shared.uHandRect!.value = [r.x, r.y, r.width, r.height];
     const still = this.#o.reducedMotion;
-    const t = this.#time;
-    let pose = POSES.rest;
+    const phase = playbackPhase();
+    let pose = POSES.open;
     if (!still) {
-      const cycle = HAND.holdS + HAND.morphS;
-      const k = Math.max(0, Math.floor(t / cycle));
-      const a = POSES[SEQUENCE[k % SEQUENCE.length]!], b = POSES[SEQUENCE[(k + 1) % SEQUENCE.length]!];
-      const m = Math.min(1, Math.max(0, (t - k * cycle - HAND.holdS) / HAND.morphS));
+      // The hand makes the gesture whose recording is entering at the trace's right edge, moving
+      // into it over the first morphS of that clip and holding it for the rest.
+      const edge = phase + 1, k = Math.floor(edge), n = SEQUENCE.length;
+      const m = Math.min(1, ((edge - k) * tracePlayback.clipS) / tracePlayback.morphS);
+      const a = POSES[SEQUENCE[(((k - 1) % n) + n) % n]!], b = POSES[SEQUENCE[((k % n) + n) % n]!];
       pose = blendPose(a, b, m * m * (3 - 2 * m));
+      // How hard the recording is working right there (mean rectified EMG under the hand) sets how
+      // fully the gesture is made: 85 % on a quiet stretch, all of it at full activation.
+      const env = envelopeAt(phase);
+      this.#grip += (Math.min(1, Math.max(0, (env - 0.08) / 0.17)) - this.#grip) * (1 - Math.exp(-dt * 4));
+      pose = blendPose(POSES.rest, pose, 0.85 + 0.15 * this.#grip);
     }
-    // Grip follows the EMG envelope where new samples enter the trace (its right end, under the hand).
-    const env = still ? 0 : envelopeAt(playbackPhase());
-    this.#grip += (Math.min(1, Math.max(0, (env - 0.12) / 0.35)) - this.#grip) * (1 - Math.exp(-dt * 4));
-    const spin = still ? HAND.reducedSpin : (t / HAND.spinS) * 360 - 25;
-    poseBones(pose, handWorld(spin, 8, this.#handM), this.#grip, this.#bones);
+    const spin = still ? HAND.reducedSpin : (this.#time / HAND.spinS) * 360 - 25;
+    poseBones(pose, handWorld(spin, 8, this.#handM), 0, this.#bones);
   }
 
   #updateTraceRect(): void {
@@ -710,16 +712,16 @@ function maskMode(): MaskMode {
 }
 export const DEFAULT_MASK: MaskMode = 'halo';
 
-/**
- * Playback position in trace lengths. Reads the static SVG's CSS animation clock when it exists,
- * so the particles pick up the line exactly where the SVG left it.
- */
+/** Every clip end to end: the loop the trace plays. */
+const TAPE = trace.clips.flatMap((c) => c.points);
+const PER_CLIP = trace.clips[0]!.points.length;
+
+/** Sample at u (0..1 across the window) for a playback position in clips. Same as traceAt() in the shader. */
 function traceSample(u: number, phase: number): number {
-  const pts = trace.points, last = pts.length - 1;
-  const v = (u + phase) * 0.5;
-  const x = (1 - Math.abs(1 - 2 * (v - Math.floor(v)))) * last;
+  const n = TAPE.length;
+  const x = (((u + phase) * PER_CLIP) % n + n) % n;
   const k = Math.floor(x), f = x - k;
-  return pts[k]! * (1 - f) + pts[Math.min(k + 1, last)]! * f;
+  return TAPE[k]! * (1 - f) + TAPE[(k + 1) % n]! * f;
 }
 
 /** Mean rectified EMG over the last tenth of the visible trace. */
@@ -729,9 +731,13 @@ function envelopeAt(phase: number): number {
   return sum / 24;
 }
 
+/**
+ * Playback position in clips (0..clips). Reads the static SVG's CSS animation clock when it exists,
+ * so the particles pick up the line exactly where the SVG left it. Reduced motion holds the open hand.
+ */
 function playbackPhase(): number {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return Math.max(0, SEQUENCE.indexOf('open'));
   const anim = document.querySelector('.hero-trace .tape')?.getAnimations()[0];
   const ms = typeof anim?.currentTime === 'number' ? anim.currentTime : performance.now();
-  return (2 * (ms / 1000)) / tracePlayback.periodS;
+  return ((ms / 1000) / tracePlayback.clipS) % tracePlayback.clips;
 }

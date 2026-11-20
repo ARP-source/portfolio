@@ -8,3 +8,4 @@ research/__pycache__/
 .DS_Store
 *.log
 src/data/lighthouse.json
+.cache/

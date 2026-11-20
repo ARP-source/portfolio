@@ -80,20 +80,22 @@ uniform float uDt;
 uniform float uForm;        // 0 swarm .. 1 trace, already spring-eased on the CPU
 uniform vec2 uViewport;     // CSS px
 uniform vec4 uTraceRect;    // x, y, w, h of the hero SVG in CSS px
-uniform float uPhase;       // playback position along the recording, in trace lengths (period 2: ping-pong)
+uniform float uPhase;       // playback position along the looped clips, in clips
 uniform vec3 uPointer;      // x, y, strength
 uniform float uScrollDy;    // px scrolled since last step
 uniform float uScroll;      // total scrollY, for the swarm's parallax homes
 uniform float uSnap;        // 1 for a single step: place every particle at its swarm home, at rest
 uniform sampler2D uHome;    // xy swarm home (0..1), z size rank, w trace u
-uniform sampler2D uTrace;   // N x 1, r = sample in [-1, 1]
+uniform sampler2D uTrace;   // N x 1, r = sample in [-1, 1]: every clip end to end
 uniform float uTraceN;
+uniform float uClipN;       // samples per clip
 ${handChunk}
 
-float traceAt(float u){
-  float x=u*(uTraceN-1.0); float i=floor(x);
+// Position p in samples along the looped tape of clips; wraps from the last sample to the first.
+float traceAt(float p){
+  float x=mod(p,uTraceN); float i=floor(x);
   float a=texelFetch(uTrace,ivec2(int(i),0),0).r;
-  float b=texelFetch(uTrace,ivec2(int(min(i+1.0,uTraceN-1.0)),0),0).r;
+  float b=texelFetch(uTrace,ivec2(int(mod(i+1.0,uTraceN)),0),0).r;
   return mix(a,b,x-i);
 }
 // Swarm homes scroll with the page at 30 % (parallax) and wrap in a band slightly taller than the viewport.
@@ -105,8 +107,8 @@ vec2 swarmHome(vec4 h){
 }
 vec2 traceTarget(vec4 h, float seed, out float s){
   float u=traceU(h);
-  // Ping-pong through the recording (forward, then back) so playback loops without a seam.
-  s=traceAt(1.0-abs(1.0-2.0*fract((u+uPhase)*0.5)));
+  // The window is one clip wide; uPhase is the playback position in clips.
+  s=traceAt((u+uPhase)*uClipN);
   float y=uTraceRect.y+uTraceRect.w*0.5-s*uTraceRect.w*0.44;
   // A line a few px thick, not a single row of points.
   y+=(fract(seed*7.13)-0.5)*2.4;

@@ -29,10 +29,13 @@ export const spring = { omega: 9 } as const;
 export const springAt = (t: number, w = spring.omega) => 1 - (1 + w * t) * Math.exp(-w * t);
 
 /**
- * Hero trace playback: the recording plays forward then backward (a seamless loop),
- * one full loop per periodS. The static SVG (CSS) and the particle trace (shader) share it.
+ * Hero trace playback: one recorded clip per hand gesture, played end to end as a loop. The window
+ * shows one clip's length and advances by one clip every clipS; the hand starts its next gesture as
+ * that gesture's clip enters at the right edge and takes morphS to get there. The static SVG (CSS),
+ * the particle trace (shader) and the hand all read the same clock.
  */
-export const tracePlayback = { periodS: 36 } as const;
+const clipS = 7.6;
+export const tracePlayback = { clipS, morphS: 1.6, clips: 5, periodS: clipS * 5 } as const;
 
 export const durations = {
   ui: 260, // UI transitions, 200-350 ms
@@ -58,5 +61,5 @@ export function tokensCss(): string {
   const colours = Object.entries(palette)
     .map(([k, v]) => `--${kebab(k)}:${v}`)
     .join(';');
-  return `:root{${colours};--ease-spring:${springLinear()};--dur-ui:${durations.ui}ms;--dur-ui-fast:${durations.uiFast}ms;--dur-morph:${durations.morph}ms;--trace-period:${tracePlayback.periodS}s}`;
+  return `:root{${colours};--ease-spring:${springLinear()};--dur-ui:${durations.ui}ms;--dur-ui-fast:${durations.uiFast}ms;--dur-morph:${durations.morph}ms;--trace-period:${tracePlayback.periodS}s;--trace-clip:${tracePlayback.clipS}s}`;
 }

@@ -1,6 +1,9 @@
 import { BONES, HAND_CAM } from './hand';
 import { REFORM, ROUTE_N } from './reform';
 
+/** Demo raster: the share of trace members that can be recruited, rows, and how fast it scrolls. */
+export const DEMO = { rasterShare: 0.5, rows: 14, scrollPerS: 0.18 };
+
 const f = (n: number) => n.toFixed(3);
 
 /**
@@ -28,6 +31,25 @@ float formWeight(vec4 h, float seed, float form){
 // The same, given the particle's velocity texel (V.w > 0.5: it has landed on its point).
 float formWeightV(vec4 h, float seed, float form, vec4 V){
   return (uAbort>0.5 && V.w<0.5) ? 0.0 : formWeight(h,seed,form);
+}
+`;
+
+/**
+ * The demo (Demo.astro): while a visitor holds "contract", dots are recruited into a raster in
+ * the demo's stage, smallest size rank first (Henneman's size principle), in proportion to the
+ * replayed recording's RMS envelope. Hand members form the hand beside it, posed as the classifier
+ * reads the recording. Drift misaligns the rows and smears the dots; recalibration clears it.
+ */
+const demoWeightChunk = /* glsl */ `
+uniform vec4 uDemo;         // x on 0..1, y recruitment 0..1 (the envelope), z smear 0..1 (drift), w hand 0..1
+uniform vec4 uDemoRect;     // the stage: x, y, w, h in CSS px
+const float RASTER_SHARE=${f(DEMO.rasterShare)};
+// A unit is recruited once the envelope passes its size rank (z), smallest first.
+float demoWeight(vec4 h, float seed){
+  if(uDemo.x<=0.0) return 0.0;
+  if(isHand(h)) return uDemo.x*uDemo.w;
+  if(fract(seed*13.71)>RASTER_SHARE) return 0.0;
+  return uDemo.x*smoothstep(h.z,h.z+0.04,uDemo.y);
 }
 `;
 
@@ -249,6 +271,25 @@ vec2 heroTarget(vec4 h, float seed, vec2 uv, out float s, out float depth){
   return traceTarget(h,seed,s);
 }
 ${reformChunk}
+${demoWeightChunk}
+uniform float uDemoT;       // the raster's clock, seconds
+// Dots in rows, small units at the bottom, scrolling left like a spike raster. Drift shifts each
+// row by its own offset and smears every dot.
+vec2 rasterTarget(vec4 h, float seed){
+  const float ROWS=${DEMO.rows.toFixed(1)};
+  float row=min(floor(h.z*ROWS),ROWS-1.0);
+  float x=fract(fract(seed*31.71)-uDemoT*${f(DEMO.scrollPerS)});
+  float rh=uDemoRect.w/ROWS;
+  vec2 p=vec2(uDemoRect.x+x*uDemoRect.z, uDemoRect.y+uDemoRect.w-(row+0.5)*rh);
+  vec2 j=jitter(seed+0.37);
+  p+=uDemo.z*vec2(sin(row*2.39+0.7)*uDemoRect.z*0.05+j.x*26.0, sin(row*1.71+2.1)*rh*0.9+j.y*rh*1.6);
+  return p;
+}
+vec2 demoTarget(vec4 h, float seed, vec2 uv, out float depth){
+  depth=0.0;
+  if(isHand(h)) return handTarget(uv,depth);
+  return rasterTarget(h,seed);
+}
 `;
 
 export const velocityShader = /* glsl */ `
@@ -291,6 +332,16 @@ void main(){
   float fw=formWeightV(H,seed,uForm,V);
   vec2 acc=mix(aSwarm,aTrace,fw);
 
+  // Demo: the same swim-then-spring as the hero, toward the raster or the posed hand.
+  float dw=demoWeight(H,seed);
+  float ddepth; vec2 dt=demoTarget(H,seed,uv,ddepth);
+  vec2 dto=dt-pos; float ddist=length(dto);
+  if(dw>0.0){
+    vec2 dseek=dto*2.6; float dss=length(dseek); if(dss>900.0) dseek*=900.0/dss;
+    vec2 aDemo=mix(k*dto-2.0*sqrt(k)*vel,(dseek-vel)*3.5,smoothstep(8.0,40.0,ddist));
+    acc=mix(acc,aDemo,dw);
+  }
+
   // The visitor's pointer pushes particles aside, within 140 px.
   vec2 d=pos-uPointer.xy; float r=length(d);
   float push=uPointer.z*pow(max(0.0,1.0-r/140.0),2.0);
@@ -301,13 +352,15 @@ void main(){
   // it stops dead on its spot when the line is complete.
   if(done<0.5) vel*=1.0-reformOnLine(H,seed,uReform);
   // Activation: ink where the recording spikes or the pointer touched, tissue at rest.
-  float act=max(fw*smoothstep(0.15,0.8,abs(s)), push);
+  float act=max(max(fw*smoothstep(0.15,0.8,abs(s)), push), dw*(isHand(H) ? 0.45 : 0.9));
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
   // Arrived: latches once a particle reaches its point, so it then rides the playing trace
   // exactly (ramps to 1); it clears as soon as the particle is released.
   float arrived=0.0;
   if(fw>0.85) arrived=(dist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
   if(done<0.5) arrived=0.0;
+  // In the raster, once on its row a dot stays locked to it, wrapping from the left edge to the right.
+  if(dw>0.85) arrived=(ddist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
   if(uSnap>0.5){ vel=vec2(0.0); z=0.0; arrived=0.0; }
   gl_FragColor=vec4(vel,z,arrived);
 }
@@ -328,6 +381,14 @@ void main(){
   // Re-forming, running along the line to its spot: ride the playing line exactly, so it draws clean.
   float ol=reformOnLine(H,P.w,uReform)*(1.0-reformDone(H,P.w,uv));
   if(ol>0.0) pos=mix(pos,reformWaypoint(H,P.w,uv,uReform),ol);
+  float dw=demoWeight(H,P.w);
+  if(dw>0.0){
+    float dd; vec2 dt=demoTarget(H,P.w,uv,dd);
+    float dl=smoothstep(0.85,1.0,dw)*max(V.w,1.0-smoothstep(3.0,24.0,length(dt-pos)));
+    pos=mix(pos,dt,dl);
+    depth=mix(depth,dd,dw);
+    fw=max(fw,dw);
+  }
   if(uSnap>0.5) pos=flockSlot(H,uFlockT);
   // z carries the hand's depth to the point shader (near dots larger and darker).
   gl_FragColor=vec4(pos,depth*fw,P.w);
@@ -342,7 +403,9 @@ uniform vec2 uViewport;
 uniform float uPixelRatio;
 uniform float uForm;
 ${formChunk}
+${demoWeightChunk}
 attribute vec2 ref;
+varying float vEdge;
 varying float vAct;
 varying vec2 vScreen;
 varying float vRank;
@@ -354,7 +417,11 @@ void main(){
   vec2 ndc=vec2(P.x/uViewport.x*2.0-1.0, 1.0-P.y/uViewport.y*2.0);
   gl_Position=vec4(ndc,0.0,1.0);
   vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w; vDepth=P.z;
-  vRecruit=formWeightV(H,P.w,uForm,V);
+  float dw=demoWeight(H,P.w);
+  vRecruit=max(formWeightV(H,P.w,uForm,V),dw);
+  // Raster dots fade in at the right end and out at the left, so wrapping round is never seen.
+  float xr=(P.x-uDemoRect.x)/max(uDemoRect.z,1.0);
+  vEdge=isHand(H) ? 1.0 : mix(1.0,smoothstep(0.0,0.06,xr)*smoothstep(1.0,0.94,xr),step(0.5,dw));
   // Swarm dots 2-3 px, big enough to read as ink; recruited dots swell a little; on the hand,
   // nearer dots are larger.
   gl_PointSize=(mix(2.0,3.0,H.z*H.z)+vRecruit*0.6)*(1.0+0.25*P.z)*uPixelRatio;
@@ -377,6 +444,7 @@ varying float vRank;
 varying float vSeed;
 varying float vRecruit;
 varying float vDepth;
+varying float vEdge;
 float hash(float n){ return fract(sin(n)*43758.5453); }
 void main(){
   vec2 c=gl_PointCoord-0.5; float r2=dot(c,c);
@@ -398,7 +466,7 @@ void main(){
   a*=clamp(0.78+0.45*vDepth,0.4,1.0);
 
   float mask=texture2D(uMask,vec2(vScreen.x,1.0-vScreen.y)).r;
-  a*=edge*(1.0-uMaskStrength*mask)*uFade;
+  a*=edge*vEdge*(1.0-uMaskStrength*mask)*uFade;
   gl_FragColor=vec4(col*a,a);
 }
 `;

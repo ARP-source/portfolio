@@ -11,10 +11,15 @@ export interface FieldEvents {
   'field:tier': { tier: Tier; particles: number; reason: string };
   'field:pause': { paused: boolean };
   // Phase 4 (demo) and Phase 5 (thread) events, declared now so the contract is fixed.
+  /** The demo stage is wired up (on) or gone (off); the Field forms nothing there until on. */
+  'emg:stage': { on: boolean };
+  /** RMS envelope of the replayed recording, 0 (at rest) .. 1 (the loudest clip). */
   'emg:envelope': { rms: number };
-  'emg:prediction': { gesture: string; p: number };
-  'emg:drift': { accuracy: number };
-  'emg:recalibrated': { accuracy: number };
+  /** The classifier's label for the latest window ('rest' when nothing is held), and its posterior. */
+  'emg:prediction': { gesture: 'rest' | 'close' | 'open' | 'pinch' | 'point'; p: number };
+  /** Measured held-out accuracy now, and on day 1 (the clean baseline the loss is measured from). */
+  'emg:drift': { accuracy: number; baseline: number };
+  'emg:recalibrated': { accuracy: number; baseline: number };
 }
 
 type Handler<K extends keyof FieldEvents> = (detail: FieldEvents[K]) => void;

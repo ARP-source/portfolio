@@ -1,0 +1,404 @@
+{
+ "measuredAt": "2026-11-20",
+ "participants": 43,
+ "gestures": [
+  "Hand close",
+  "Hand open",
+  "Thumb-index pinch",
+  "Index point"
+ ],
+ "summary": {
+  "day1": {
+   "mean": 0.9101102385986106,
+   "sd": 0.09392900674878749,
+   "median": 0.9253246753246753
+  },
+  "day8": {
+   "mean": 0.7050739957716702,
+   "sd": 0.22925553610843144,
+   "median": 0.7467532467532467
+  },
+  "day29": {
+   "mean": 0.6989957716701904,
+   "sd": 0.2219895230637847,
+   "median": 0.7621753246753247
+  },
+  "recal1": {
+   "mean": 0.8816256418000603,
+   "sd": 0.10414009846679767,
+   "median": 0.913961038961039
+  },
+  "recal2": {
+   "mean": 0.8995960434913922,
+   "sd": 0.10408187948415533,
+   "median": 0.939935064935065
+  },
+  "recal3": {
+   "mean": 0.9181327393536693,
+   "sd": 0.09150564696182194,
+   "median": 0.9553571428571429
+  },
+  "drop": {
+   "mean": 0.21111446692842042,
+   "sd": 0.22791095382304427,
+   "median": 0.19074675324675316,
+   "participantsWithDrop": 37
+  }
+ },
+ "perParticipant": {
+  "1": {
+   "day1": 0.9367,
+   "day8": 0.9416,
+   "day29": 0.8433,
+   "recal1": 0.8174,
+   "recal2": 0.9156,
+   "recal3": 0.9602
+  },
+  "2": {
+   "day1": 0.8945,
+   "day8": 0.8425,
+   "day29": 0.8433,
+   "recal1": 0.914,
+   "recal2": 0.9659,
+   "recal3": 0.9692
+  },
+  "3": {
+   "day1": 0.9756,
+   "day8": 0.8823,
+   "day29": 0.8166,
+   "recal1": 0.8295,
+   "recal2": 0.8409,
+   "recal3": 0.8279
+  },
+  "4": {
+   "day1": 0.9854,
+   "day8": 0.987,
+   "day29": 0.7622,
+   "recal1": 0.8515,
+   "recal2": 0.8466,
+   "recal3": 0.8718
+  },
+  "5": {
+   "day1": 0.8653,
+   "day8": 0.7646,
+   "day29": 0.6242,
+   "recal1": 0.8531,
+   "recal2": 0.9026,
+   "recal3": 0.9505
+  },
+  "6": {
+   "day1": 0.6932,
+   "day8": 0.2687,
+   "day29": 0.4756,
+   "recal1": 0.8101,
+   "recal2": 0.8571,
+   "recal3": 0.8709
+  },
+  "7": {
+   "day1": 0.8977,
+   "day8": 0.9976,
+   "day29": 0.8847,
+   "recal1": 0.9375,
+   "recal2": 0.9602,
+   "recal3": 0.9781
+  },
+  "8": {
+   "day1": 0.836,
+   "day8": 0.7378,
+   "day29": 0.8669,
+   "recal1": 0.9164,
+   "recal2": 0.9278,
+   "recal3": 0.9058
+  },
+  "9": {
+   "day1": 0.9172,
+   "day8": 0.5787,
+   "day29": 0.3474,
+   "recal1": 0.9813,
+   "recal2": 0.9708,
+   "recal3": 0.9765
+  },
+  "10": {
+   "day1": 0.8295,
+   "day8": 0.97,
+   "day29": 0.9903,
+   "recal1": 0.9903,
+   "recal2": 0.9911,
+   "recal3": 0.9976
+  },
+  "11": {
+   "day1": 0.8539,
+   "day8": 0.4229,
+   "day29": 0.2638,
+   "recal1": 0.8157,
+   "recal2": 0.8295,
+   "recal3": 0.9286
+  },
+  "12": {
+   "day1": 0.8912,
+   "day8": 0.4627,
+   "day29": 0.8109,
+   "recal1": 0.9781,
+   "recal2": 0.983,
+   "recal3": 0.9756
+  },
+  "13": {
+   "day1": 0.9968,
+   "day8": 0.3571,
+   "day29": 0.806,
+   "recal1": 0.9675,
+   "recal2": 0.9732,
+   "recal3": 0.9756
+  },
+  "14": {
+   "day1": 0.7938,
+   "day8": 0.4886,
+   "day29": 0.6745,
+   "recal1": 0.776,
+   "recal2": 0.8036,
+   "recal3": 0.8287
+  },
+  "15": {
+   "day1": 0.6688,
+   "day8": 0.3531,
+   "day29": 0.5731,
+   "recal1": 0.7346,
+   "recal2": 0.7873,
+   "recal3": 0.8125
+  },
+  "16": {
+   "day1": 0.9984,
+   "day8": 0.9562,
+   "day29": 0.8742,
+   "recal1": 0.9351,
+   "recal2": 0.9489,
+   "recal3": 0.9943
+  },
+  "17": {
+   "day1": 1.0,
+   "day8": 0.3263,
+   "day29": 0.5576,
+   "recal1": 0.9619,
+   "recal2": 0.9773,
+   "recal3": 0.9919
+  },
+  "18": {
+   "day1": 0.9724,
+   "day8": 0.9992,
+   "day29": 0.7541,
+   "recal1": 0.8653,
+   "recal2": 0.8994,
+   "recal3": 0.9156
+  },
+  "19": {
+   "day1": 0.8571,
+   "day8": 0.7086,
+   "day29": 0.7638,
+   "recal1": 0.9383,
+   "recal2": 0.9497,
+   "recal3": 0.9554
+  },
+  "20": {
+   "day1": 1.0,
+   "day8": 0.845,
+   "day29": 0.6136,
+   "recal1": 0.7175,
+   "recal2": 0.8466,
+   "recal3": 0.892
+  },
+  "21": {
+   "day1": 0.9968,
+   "day8": 0.8093,
+   "day29": 0.8214,
+   "recal1": 0.9245,
+   "recal2": 0.9399,
+   "recal3": 0.9432
+  },
+  "22": {
+   "day1": 0.9821,
+   "day8": 0.53,
+   "day29": 0.651,
+   "recal1": 0.8474,
+   "recal2": 0.905,
+   "recal3": 0.9107
+  },
+  "23": {
+   "day1": 0.9805,
+   "day8": 0.9399,
+   "day29": 0.832,
+   "recal1": 0.9675,
+   "recal2": 0.9903,
+   "recal3": 0.9935
+  },
+  "24": {
+   "day1": 0.914,
+   "day8": 0.5349,
+   "day29": 0.3336,
+   "recal1": 0.7857,
+   "recal2": 0.8458,
+   "recal3": 0.8799
+  },
+  "25": {
+   "day1": 0.9253,
+   "day8": 0.7468,
+   "day29": 0.9537,
+   "recal1": 0.9813,
+   "recal2": 0.9935,
+   "recal3": 0.9935
+  },
+  "26": {
+   "day1": 0.9773,
+   "day8": 0.9034,
+   "day29": 0.5479,
+   "recal1": 0.9083,
+   "recal2": 0.9278,
+   "recal3": 0.9172
+  },
+  "27": {
+   "day1": 0.974,
+   "day8": 0.931,
+   "day29": 0.6023,
+   "recal1": 0.724,
+   "recal2": 0.6209,
+   "recal3": 0.7143
+  },
+  "28": {
+   "day1": 0.9903,
+   "day8": 0.7386,
+   "day29": 0.7427,
+   "recal1": 0.9578,
+   "recal2": 0.9505,
+   "recal3": 0.9797
+  },
+  "29": {
+   "day1": 0.9789,
+   "day8": 0.5657,
+   "day29": 0.7386,
+   "recal1": 0.901,
+   "recal2": 0.983,
+   "recal3": 0.9886
+  },
+  "30": {
+   "day1": 0.625,
+   "day8": 0.9846,
+   "day29": 0.9716,
+   "recal1": 0.9919,
+   "recal2": 0.9862,
+   "recal3": 0.9797
+  },
+  "31": {
+   "day1": 1.0,
+   "day8": 0.4635,
+   "day29": 0.9367,
+   "recal1": 0.9903,
+   "recal2": 0.9919,
+   "recal3": 0.9968
+  },
+  "32": {
+   "day1": 0.9838,
+   "day8": 0.7459,
+   "day29": 0.7833,
+   "recal1": 0.7606,
+   "recal2": 0.8101,
+   "recal3": 0.8263
+  },
+  "33": {
+   "day1": 0.888,
+   "day8": 0.5049,
+   "day29": 0.8937,
+   "recal1": 0.9716,
+   "recal2": 0.9886,
+   "recal3": 0.9959
+  },
+  "34": {
+   "day1": 0.9821,
+   "day8": 0.8466,
+   "day29": 0.9351,
+   "recal1": 0.9651,
+   "recal2": 0.9424,
+   "recal3": 0.9594
+  },
+  "35": {
+   "day1": 0.8896,
+   "day8": 0.25,
+   "day29": 0.25,
+   "recal1": 0.8677,
+   "recal2": 0.9586,
+   "recal3": 0.9619
+  },
+  "36": {
+   "day1": 0.9854,
+   "day8": 0.9416,
+   "day29": 0.9367,
+   "recal1": 1.0,
+   "recal2": 0.9878,
+   "recal3": 0.9984
+  },
+  "37": {
+   "day1": 0.9107,
+   "day8": 0.7979,
+   "day29": 0.8912,
+   "recal1": 0.9943,
+   "recal2": 0.9968,
+   "recal3": 0.9984
+  },
+  "38": {
+   "day1": 0.9253,
+   "day8": 0.918,
+   "day29": 0.6794,
+   "recal1": 0.7127,
+   "recal2": 0.6453,
+   "recal3": 0.5933
+  },
+  "39": {
+   "day1": 0.9156,
+   "day8": 0.6104,
+   "day29": 0.9976,
+   "recal1": 0.9976,
+   "recal2": 0.9984,
+   "recal3": 0.9976
+  },
+  "40": {
+   "day1": 0.7679,
+   "day8": 0.8539,
+   "day29": 0.4692,
+   "recal1": 0.5609,
+   "recal2": 0.6023,
+   "recal3": 0.8157
+  },
+  "41": {
+   "day1": 0.8847,
+   "day8": 0.4269,
+   "day29": 0.3644,
+   "recal1": 0.7045,
+   "recal2": 0.7127,
+   "recal3": 0.694
+  },
+  "42": {
+   "day1": 0.7987,
+   "day8": 0.8498,
+   "day29": 0.3287,
+   "recal1": 0.8685,
+   "recal2": 0.8044,
+   "recal3": 0.858
+  },
+  "43": {
+   "day1": 0.9951,
+   "day8": 0.5341,
+   "day29": 0.25,
+   "recal1": 0.9359,
+   "recal2": 0.9237,
+   "recal3": 0.905
+  }
+ },
+ "demoParticipant": 13,
+ "demoAccuracy": {
+  "day1": 0.9967532467532467,
+  "day8": 0.35714285714285715,
+  "day29": 0.8060064935064936,
+  "recal1": 0.9675324675324676,
+  "recal2": 0.9732142857142857,
+  "recal3": 0.9756493506493507
+ },
+ "method": "- Gestures: hand close (16), hand open (15), thumb-index opposition (4), index extension (9): the\n  four the demo offers. Sessions 1, 2, 3 are days 1, 8, 29. Seven 5 s trials per gesture per day.\n- Signal: the 16 forearm electrodes as 8 bipolar pairs (ring 1 minus ring 2), each file converted\n  to mV with its own per-channel gain and baseline from the .hea (raw counts are not comparable\n  across files). 10-500 Hz Butterworth band-pass and a 60 Hz notch. The first and last 0.5 s of\n  each trial are dropped (onset and release).\n- Windows: 200 ms, stepped every 50 ms. 200 ms sits in the 150-250 ms range that real-time\n  myoelectric control uses (long enough for stable amplitude features, short enough to respond\n  without a noticeable delay); 50 ms gives 20 decisions a second.\n- Features (40): log MAV, log RMS, log waveform length, zero crossings, slope sign changes, per pair.\n- Classifier: linear discriminant analysis with equal priors on z-scored features (day-1 mean and\n  SD) and a shrunk pooled covariance, (1 - lam) S + lam * mean(diag S) * I, with lam from the\n  Ledoit-Wolf estimate on day 1 and then held fixed. Written out by hand (not sklearn) so the\n  browser can run exactly the same maths, recalibration included.\n- Split: train on day-1 trials 1-5; test on day-1 trials 6-7, day-8 trials 4-7, day-29 trials 4-7.\n  Recalibration adds day-29 trials 1..k of every gesture to the day-1 training data and refits.\n- Demo participant: the one whose day-1 to day-29 drop is closest to the population median, so\n  the demo shows a typical case, not the most dramatic one."
+}

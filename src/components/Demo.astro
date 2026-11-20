@@ -1,26 +1,239 @@
 ---
-// Phase 2/3: a short, readable version. Phase 4 adds the interactive demo (replayed EMG, LDA in the
-// browser, recalibration) to this section; until then it says only what is true today.
+// The guided drift demo. Everything a visitor reads here is measured: the participant's numbers are
+// computed at build time by the same code the page runs (src/demo), from the same assets, and the
+// population numbers come from research/drift_pipeline.py. With JS off it is a short report; with
+// JS the controls appear and the classifier runs in the page.
+import drift from '../data/drift.json';
+import { demoSummary } from '../demo/summary';
+import { site } from '../site.config';
+
+const { meta, acc, worst, worstAs, scale, play, path } = demoSummary();
+const SHORT = ['Close', 'Open', 'Pinch', 'Point'];
+const NAME = ['hand close', 'hand open', 'pinch', 'point'];
+const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+const pm = (k: 'day1' | 'day29' | 'recal3') => `${Math.round(drift.summary[k].mean * 100)} ± ${Math.round(drift.summary[k].sd * 100)}%`;
+const P = meta.participant;
+const W = 960, H = 160;
 ---
 
 <section id="demo" class="wrap section" aria-labelledby="demo-title" data-section="demo">
   <h2 id="demo-title">The drift problem, in one example</h2>
   <div class="col">
     <p>
-      The line at the top of this page is a real recording: one participant's forearm during the five gestures the hand is
-      making, from a public dataset where the same 43 people were recorded on day 1, day 8 and day 29 with the electrodes taken off and put back
-      on in between. Train a simple classifier on day 1 and test it on day 29 and it gets noticeably worse. A handful of
-      fresh samples brings most of it back. I'm turning that into something you can try here.
-    </p>
-    <p class="todo">TODO(phase 4): the interactive version, with numbers across all 43 participants.</p>
-    <p class="cite">
-      Data: GRABMyo v1.1.0 (Jiang, Pradhan &amp; He, PhysioNet, 2024),
-      <a href="https://doi.org/10.13026/89dm-f662">doi:10.13026/89dm-f662</a>, CC BY 4.0. Dataset paper: Pradhan, He &amp;
-      Jiang, Sci Data 9, 733 (2022).
+      GRABMyo is a public dataset in which 43 people made the same hand gestures on day 1, day 8 and day 29, with the
+      electrodes taken off and put back on in between. Below is one of them. A classifier trained on their day-1
+      recording runs in this page: hold a gesture to replay it, then jump four weeks ahead.
     </p>
   </div>
+
+  <div class="demo" data-demo data-src="/demo/" data-scale={scale} data-worst={worst} data-worst-as={worstAs}>
+    <div class="scope" data-day="1">
+      <p class="meta scope-head">
+        <span data-day-label>Day 1</span> · participant {P} · electrode pair <span data-pair>{play.pair}</span> ·
+        <span data-gesture-label>{NAME[0]}</span>
+      </p>
+      <svg class="scope-trace" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        <defs><clipPath id="demo-reveal"><rect data-reveal x="0" y="0" width={W} height={H}></rect></clipPath></defs>
+        <line class="baseline" x1="0" x2={W} y1={H / 2} y2={H / 2}></line>
+        <path class="trace trace--rest" data-trace-all d={path(play.trace!, W, H)}></path>
+        <path class="trace" data-trace clip-path="url(#demo-reveal)" d={path(play.trace!, W, H)}></path>
+        <line class="cursor" data-cursor x1="0" x2="0" y1="0" y2={H}></line>
+      </svg>
+      <div class="stage" data-field-stage aria-hidden="true"></div>
+      <p class="meta stage-note">
+        Dots: recruited from the recording's RMS envelope, smallest first. A picture of the signal's strength, not
+        decomposed motor units.
+      </p>
+      <div class="hand-slot" data-field-hand aria-hidden="true"></div>
+    </div>
+
+    <div class="panel">
+      <ol class="steps">
+        <li data-n="1">
+          <h3>Pick a gesture</h3>
+          <fieldset class="chips" hidden data-js>
+            <legend class="sr-only">Gesture</legend>
+            {SHORT.map((label, g) => (
+              <label><input type="radio" name="demo-gesture" value={g} checked={g === 0} /><span>{label}</span></label>
+            ))}
+          </fieldset>
+          <p class="nojs dim">Hand close, hand open, thumb-index pinch, or index point.</p>
+        </li>
+        <li data-n="2">
+          <h3>Hold to contract</h3>
+          <div class="row" hidden data-js>
+            <button type="button" class="btn btn-hold" data-hold aria-describedby="demo-hold-hint">Hold to contract</button>
+            <button type="button" class="btn btn-quiet" data-play>Play 3 s instead</button>
+          </div>
+          <p class="dim" id="demo-hold-hint">
+            While you hold (Space or Enter work too, with the button focused), the recording plays and the classifier
+            labels every 200 ms window as it passes.
+          </p>
+          <p class="reading" hidden data-js>
+            Classifier reads <output class="mono" data-pred>nothing yet</output>
+          </p>
+        </li>
+        <li data-n="3">
+          <h3>Skip to day 29</h3>
+          <div class="row" hidden data-js>
+            <button type="button" class="btn" data-skip>Skip to day 29</button>
+            <button type="button" class="btn btn-quiet" data-reset hidden>Back to day 1</button>
+          </div>
+          <p class="dim">Same person, same gestures, four weeks later. The model is still the one trained on day 1.</p>
+          <p class="after" data-after-skip hidden>
+            Most of the loss is in {NAME[worst]}: the day-1 model reads it as {NAME[worstAs]} more often
+            than not. Pick it and hold.
+          </p>
+        </li>
+        <li data-n="4">
+          <h3>Hold 3 times to recalibrate</h3>
+          <div class="row" hidden data-js>
+            <button type="button" class="btn btn-hold" data-recal disabled aria-describedby="demo-recal-hint">Hold to recalibrate</button>
+            <button type="button" class="btn btn-quiet" data-recal-add disabled>Add a round</button>
+            <span class="meta rounds" data-rounds>0 of 3</span>
+          </div>
+          <p class="dim" id="demo-recal-hint">
+            Each hold of a second or more adds one fresh day-29 repetition of all four gestures to the training data,
+            and the model is refitted in the page.
+          </p>
+          <p class="done" data-done hidden>
+            <a href="/work/myocopilot">This is the idea behind MyoCopilot</a>, and part of the question behind
+            <a href="/work/edge-decoder-drift">edge-decoder-drift</a>.
+          </p>
+        </li>
+      </ol>
+
+      <dl class="readout mono">
+        <div><dt>Day-1 model on day 1</dt><dd>{pct(acc.day1)}</dd></div>
+        <div data-row-day29>
+          <dt>Same model on day 29</dt>
+          <dd>{pct(acc.day29)} <span class="flag" data-drift-flag>Drift detected</span></dd>
+        </div>
+        <div data-row-recal>
+          <dt>After recalibration</dt>
+          <dd data-recal-values>{acc.recal.map(pct).join(' · ')}</dd>
+        </div>
+      </dl>
+      <p class="meta readout-note">
+        Share of held-out 200 ms windows classified correctly: day-1 repetitions 6 and 7, day-29 repetitions 4 to 7.
+        Recalibration uses day-29 repetitions 1 to 3, never the ones it is tested on.
+      </p>
+      <p class="status" role="status" aria-live="polite" data-status></p>
+    </div>
+  </div>
+
+  <p class="honesty mono">
+    Replayed public data: GRABMyo, participant {P}, day 1 vs day 29. Classifier: LDA on time-domain features, running
+    in your browser. Not MyoCopilot's production model.
+  </p>
+
+  <div class="col population">
+    <p>
+      Across all {drift.participants} participants, with the same pipeline and nothing tuned per person, the day-1 model
+      scores {pm('day1')} on day 1 and {pm('day29')} on day 29; {drift.summary.drop.participantsWithDrop} of
+      {drift.participants} get worse. Adding three day-29 repetitions brings it to {pm('recal3')}. The demo uses
+      participant {P} because their drop ({Math.round((acc.day1 - acc.day29) * 100)} points) is the closest to the
+      median, so it is a typical case, not the most dramatic one.
+    </p>
+    <p class="meta">
+      Bipolar pairs F1–F9 to F8–F16, 10–500 Hz band-pass and 60 Hz notch, 200 ms windows every 50 ms, 40 features
+      (log MAV, log RMS, log waveform length, zero crossings, slope sign changes), shrinkage LDA. Script:
+      <code>research/drift_pipeline.py</code> in <a href={`${site.github}/portfolio`}>this site's repository</a>,
+      measured {drift.measuredAt}.
+    </p>
+  </div>
+  <p class="cite col">
+    Data: GRABMyo v1.1.0 (Jiang, Pradhan &amp; He, PhysioNet, 2024),
+    <a href="https://doi.org/10.13026/89dm-f662">doi:10.13026/89dm-f662</a>, CC BY 4.0. Dataset paper: Pradhan, He &amp;
+    Jiang, Sci Data 9, 733 (2022).
+  </p>
 </section>
 
 <style>
-  .cite { font-size: 0.85rem; color: var(--ink-dim); }
+  .demo [hidden] { display: none !important; }
+  .demo { display: grid; gap: 2rem 3rem; margin-top: 2rem; }
+  @media (min-width: 60rem) {
+    .demo { grid-template-columns: minmax(0, 1fr) minmax(0, 26rem); align-items: start; }
+    /* The instrument stays in view while the steps beside it scroll. */
+    .scope { order: 2; position: sticky; top: 1.5rem; }
+  }
+
+  .scope-head { margin-bottom: 0.5rem; }
+  .scope-trace { display: block; width: 100%; height: 6rem; overflow: hidden; }
+  .scope-trace .baseline { stroke: var(--tissue); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .scope-trace .trace--rest { opacity: 0.55; }
+  .cursor { stroke: var(--ink-dim); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: 0; }
+  .demo[data-playing] .cursor { opacity: 1; }
+  .scope[data-day='29']:not([data-recalibrated]) [data-trace] { stroke: var(--drift); }
+  .stage { height: 6.5rem; margin-top: 0.75rem; border-top: 1px solid var(--tissue-faint); border-bottom: 1px solid var(--tissue-faint); }
+  .stage-note { margin-top: 0.4rem; }
+  .hand-slot { display: none; }
+  /* The hand forms only where the hero's hand does: the same width, so the same point cloud is loaded. */
+  @media (min-width: 68rem) {
+    .hand-slot { display: block; height: min(17rem, 100vh - 26rem); min-height: 12rem; margin-top: 0.25rem; }
+  }
+  /* Without the particles there is nothing to draw in the stage or the hand slot. */
+  html:not([data-field='on']) :is(.stage, .stage-note, .hand-slot) { display: none; }
+
+  .steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+  .steps > li { position: relative; padding: 0 0 1.4rem 2.4rem; margin: 0; counter-increment: step; }
+  .steps > li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0.1rem;
+    font-family: var(--font-mono); font-size: 0.8rem; color: var(--ink-dim);
+    width: 1.6rem; height: 1.6rem; display: grid; place-items: center;
+    border: 1px solid var(--tissue); border-radius: 50%;
+  }
+  .steps > li[aria-current='step']::before { border-color: var(--ink); color: var(--ink); }
+  .steps h3 { font-size: 1.15rem; margin: 0.15rem 0 0.6rem; }
+  .steps p { font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.9rem; margin-bottom: 0.7rem; }
+  .after { color: var(--ink); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; border: 0; padding: 0; margin: 0 0 0.5rem; }
+  .chips label { position: relative; }
+  .chips input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .chips span {
+    display: inline-block; padding: 0.35rem 0.85rem; border: 1px solid var(--tissue); border-radius: 999px;
+    font-family: var(--font-mono); font-size: 0.82rem; color: var(--ink-soft); background: var(--paper);
+  }
+  .chips input:checked + span { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+  .chips input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 2px; }
+  html[data-demo='ready'] .nojs { display: none; }
+
+  .btn {
+    font: inherit; font-family: var(--font-mono); font-size: 0.85rem; color: var(--ink);
+    background: var(--paper-raised); border: 1px solid var(--ink); border-radius: 3px;
+    padding: 0.6rem 1rem; cursor: pointer; min-height: 2.75rem;
+  }
+  .btn:disabled { color: var(--ink-dim); border-color: var(--tissue); cursor: default; }
+  .btn-quiet { border-color: transparent; background: none; text-decoration: underline; text-underline-offset: 0.2em; padding-inline: 0.25rem; }
+  .btn-quiet:disabled { border-color: transparent; text-decoration: none; }
+  .btn-hold { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .btn-hold[aria-pressed='true'] { background: var(--ink); color: var(--paper); }
+  .btn-hold::after {
+    content: ''; position: absolute; left: 0; bottom: 0; height: 3px; width: calc(var(--held, 0) * 100%);
+    background: var(--paper);
+  }
+  .rounds { white-space: nowrap; }
+
+  .reading output { color: var(--ink); }
+  .reading output[data-wrong] { color: var(--drift-deep); }
+
+  .readout { margin: 0.5rem 0 0; font-size: 0.85rem; border-top: 1px solid var(--tissue-faint); }
+  .readout > div { display: flex; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--tissue-faint); }
+  .readout dt { color: var(--ink-dim); }
+  .readout dd { margin: 0; color: var(--ink); text-align: right; }
+  .flag { color: var(--drift-deep); margin-left: 0.5rem; }
+  .flag::before { content: '▲ '; font-size: 0.7em; vertical-align: 0.1em; }
+  /* With JS the rows appear as the visitor reaches them. */
+  html[data-demo='ready'] .demo:not([data-skipped]) [data-row-day29] dd { color: var(--ink-dim); }
+  html[data-demo='ready'] .demo:not([data-skipped]) .flag,
+  html[data-demo='ready'] .demo[data-recalibrating] .flag { display: none; }
+  .readout-note { margin-top: 0.6rem; }
+  .status { min-height: 1.6em; font-size: 0.95rem; color: var(--ink); margin-top: 1rem; }
+
+  .honesty { font-size: 0.75rem; color: var(--ink-dim); margin: 2rem 0 2.5rem; max-width: 46rem; letter-spacing: 0.01em; }
+  .population p:first-child { color: var(--ink-soft); }
+  .cite { font-size: 0.85rem; color: var(--ink-dim); margin-top: 1rem; }
 </style>

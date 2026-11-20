@@ -24,7 +24,7 @@ import { TIER_SIZE } from './tiers';
 import { pointsFragment, pointsVertex, positionShader, velocityShader } from './shaders';
 import trace from '../data/hero-trace.json';
 import { REFORM, traceRoute } from './reform';
-import { BONES, POSES, SEQUENCE, blendPose, handWorld, loadHand, poseBones, projectHand, type HandData } from './hand';
+import { BONES, POSES, SEQUENCE, blendPose, handWorld, loadHand, poseBones, projectHand, type HandData, type Pose } from './hand';
 
 /** Formations implemented in v1. The rest of the contract arrives in later phases. */
 const FORM_VALUE: Partial<Record<Formation, number>> = { swarm: 0, trace: 1 };
@@ -64,6 +64,11 @@ const TEXT_SELECTOR =
 
 /** Hand: one slow turn every spinS seconds; a fixed three-quarter view with reduced motion. */
 const HAND = { spinS: 30, reducedSpin: -28 };
+/**
+ * Demo: lossFull is the accuracy loss (day 1 minus now) that reads as fully drifted; below
+ * confident the hand keeps its last pose rather than following a guess.
+ */
+const DEMO = { lossFull: 0.25, confident: 0.6, poseS: 0.25 };
 const HAND_SPLIT = 0.6;
 
 interface Sim {
@@ -132,6 +137,13 @@ export class Field {
   #handData: HandData | null = null;
   #bleed = 0;
   #bleedTarget = 0;
+  /** The demo: wired up (stage), eased weights, and what the classifier last said. */
+  #demo = {
+    stage: false, on: 0, recruit: 0, recruitTo: 0, smear: 0, loss: 0, hand: 0, seen: false,
+    pose: 'rest' as keyof typeof POSES, t: 0,
+  };
+  #demoPose: Pose = POSES.rest.map((q) => [...q] as Pose[number]);
+  #stillTimer = 0;
   #pointer = { x: -1e4, y: -1e4, strength: 0, lastMove: 0 };
   #probe: number[] = [];
   #probeDone = false;
@@ -204,6 +216,9 @@ export class Field {
       uHandLocal: { value: null },
       uMask: { value: tex },
       uFade: { value: 0 },
+      uDemo: { value: [0, 0, 0, 0] },
+      uDemoRect: { value: [0, -1000, 1, 1] },
+      uDemoT: { value: 0 },
     };
 
     document.documentElement.dataset.mask = maskMode();
@@ -312,6 +327,7 @@ export class Field {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    clearTimeout(this.#stillTimer);
     cancelAnimationFrame(this.#raf);
     this.#off.forEach((f) => f());
     this.#teardownSim();
@@ -470,8 +486,11 @@ export class Field {
     this.#updateFlock(dt);
     u.uSnap!.value = this.#snapNext ? 1 : 0;
     u.uPhase!.value = playbackPhase();
+    this.#updateDemo(dt);
     this.#updateHand(dt);
-    this.#bleed += (this.#bleedTarget - this.#bleed) * (1 - Math.exp(-dt * 2.5));
+    // The demo's stain shows only while the demo is on screen; the hero is never stained by it.
+    const bleedTo = Math.max(this.#bleedTarget, this.#demo.loss * this.#demo.on);
+    this.#bleed += (bleedTo - this.#bleed) * (1 - Math.exp(-dt * 2.5));
     u.uBleed!.value = this.#bleed;
     this.#scrollDy = 0;
     s.gpu.compute();
@@ -574,6 +593,17 @@ export class Field {
     if (this.#sim && !this.#disposed) this.#render();
   }
 
+  /** Reduced motion has no frame loop: settle and draw once after the demo changes state. */
+  #still(): void {
+    if (!this.#o.reducedMotion || this.#stillTimer) return;
+    this.#stillTimer = window.setTimeout(() => {
+      this.#stillTimer = 0;
+      if (this.#disposed || !this.#sim) return;
+      this.#settle(60);
+      this.#renderOnce();
+    }, 250);
+  }
+
   /** Rolling fps, plus the one-off tier probe: 1 s of frames after a 1.5 s warm-up. */
   #measure(raw: number): void {
     if (raw <= 0 || raw > 0.5) return;
@@ -667,6 +697,34 @@ export class Field {
     return false;
   }
 
+  /**
+   * The demo's stage and hand slot, read every frame like the hero. It forms only once the hero has
+   * fully let go, so nothing the hero does changes while the demo is off screen.
+   */
+  #updateDemo(dt: number): void {
+    const d = this.#demo;
+    const u = this.#shared;
+    const r = d.stage ? document.querySelector('[data-field-stage]')?.getBoundingClientRect() : undefined;
+    const free = this.#formTo() === 0 && this.#form.value < 0.02 && this.#reform.start < 0;
+    const want = !!r && r.width > 0 && r.bottom > 0 && r.top < innerHeight && free;
+    if (!free || !d.stage) d.on = 0;
+    else d.on += ((want ? 1 : 0) - d.on) * (1 - Math.exp(-dt * 3));
+    if (d.on < 0.002) d.on = 0;
+    const up = d.recruitTo > d.recruit;
+    d.recruit += (d.recruitTo - d.recruit) * (1 - Math.exp(-dt * (up ? 14 : 4)));
+    d.smear += (d.loss - d.smear) * (1 - Math.exp(-dt * 2.5));
+    const slot = document.querySelector('[data-field-hand]')?.getBoundingClientRect();
+    const handOk = this.#handReady && d.seen && !!slot && slot.width > 0 && slot.height > 0;
+    d.hand += ((handOk ? 1 : 0) - d.hand) * (1 - Math.exp(-dt * 3));
+    if (!this.#o.reducedMotion) d.t += dt;
+    if (r) u.uDemoRect!.value = [r.x, r.y, r.width, r.height];
+    u.uDemoT!.value = d.t;
+    u.uDemo!.value = [d.on, d.recruit, d.smear, d.hand];
+    // The hand eases toward the pose the classifier last read with confidence.
+    const k = this.#o.reducedMotion ? 1 : 1 - Math.exp(-dt / DEMO.poseS);
+    this.#demoPose = blendPose(this.#demoPose, POSES[d.pose], k);
+  }
+
   /** Hand rect, gesture (cycle + EMG grip) and the slow turn, as 16 skinning matrices. */
   #updateHand(dt: number): void {
     const el = document.querySelector<HTMLElement>('.hero-hand');
@@ -674,8 +732,17 @@ export class Field {
     const on = this.#handReady && !!r && r.width > 0 && r.height > 0;
     this.#shared.uHandOn!.value = on ? 1 : 0;
     if (!on) return;
-    this.#shared.uHandRect!.value = [r.x, r.y, r.width, r.height];
     const still = this.#o.reducedMotion;
+    const d = this.#demo;
+    const slot = d.on > 0 && d.hand > 0.001 ? document.querySelector('[data-field-hand]')?.getBoundingClientRect() : undefined;
+    if (slot) {
+      // The demo's hand: posed by the classifier, turning slowly like the hero's.
+      this.#shared.uHandRect!.value = [slot.x, slot.y, slot.width, slot.height];
+      const spin = still ? HAND.reducedSpin : (this.#time / HAND.spinS) * 360 - 25;
+      poseBones(this.#demoPose, handWorld(spin, 8, this.#handM), 0, this.#bones);
+      return;
+    }
+    this.#shared.uHandRect!.value = [r.x, r.y, r.width, r.height];
     const phase = playbackPhase();
     let pose = POSES.open;
     if (!still) {
@@ -878,6 +945,35 @@ export class Field {
     const ro = new ResizeObserver(() => this.#measureText());
     ro.observe(document.body);
     this.#off.push(() => ro.disconnect());
+
+    // The demo: it emits, the Field forms. Late listeners pick up the last state.
+    const d = this.#demo;
+    const lossOf = (e: { accuracy: number; baseline: number }) =>
+      Math.min(1, Math.max(0, (e.baseline - e.accuracy) / DEMO.lossFull));
+    const stage = (on: boolean) => {
+      d.stage = on;
+      if (!on) Object.assign(d, { recruitTo: 0, loss: 0, seen: false, pose: 'rest' });
+    };
+    stage(bus.last('emg:stage')?.on ?? false);
+    const lastLoss = bus.last('emg:recalibrated') ?? bus.last('emg:drift');
+    if (lastLoss) d.loss = lossOf(lastLoss);
+    this.#off.push(
+      bus.on('emg:stage', ({ on }) => (stage(on), this.#still())),
+      bus.on('emg:envelope', ({ rms }) => {
+        d.recruitTo = Math.min(1, Math.max(0, rms));
+        this.#still();
+      }),
+      bus.on('emg:prediction', ({ gesture, p }) => {
+        if (gesture === 'rest') d.pose = 'rest';
+        else if (p >= DEMO.confident) {
+          d.pose = gesture;
+          d.seen = true;
+        }
+        this.#still();
+      }),
+      bus.on('emg:drift', (e) => ((d.loss = lossOf(e)), this.#still())),
+      bus.on('emg:recalibrated', (e) => ((d.loss = lossOf(e)), this.#still())),
+    );
 
     this.#off.push(
       // Pages with a release divider are driven from the frame loop instead (#wantHero).

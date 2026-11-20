@@ -102,4 +102,20 @@ function showFps(): void {
   }, 1000);
 }
 
+/** The demo's code and recordings (~200 KB) load only as its section comes within a screen. */
+function demoWhenNear(): void {
+  const el = document.querySelector<HTMLElement>('[data-demo]');
+  if (!el) return;
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      import('../demo/demo').then((m) => m.mountDemo(el)).catch((e) => console.warn('demo failed to load', e));
+    },
+    { rootMargin: '100% 0px' },
+  );
+  io.observe(el);
+}
+
+demoWhenNear();
 idle(() => void start());

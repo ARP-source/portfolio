@@ -26,14 +26,27 @@ It writes `src/data/lighthouse.json` (git-ignored); the next build prints those 
 | `src/styles/global.css` | Type, grain overlay, graticule rules, the shared `.trace` stroke style |
 | `src/content/projects/*.md` | One file per project: frontmatter (schema in `src/content.config.ts`) + Question, Setup, Result, What failed, What's next |
 | `src/components/` | Astro components, no client JS |
+| `src/scripts/boot.ts` | The only script on a page (2.4 KB gz, `type=module`). After `load` and an idle moment it checks for hardware WebGL2, then imports the Field. `?field=off` skips it, `?tier=high\|mid\|static` forces a tier, `?fps` shows a readout |
+| `src/scripts/bus.ts` | Typed event bus: `section:enter/leave`, `field:tier`, `field:pause`, and the `emg:*` events for Phase 4 |
+| `src/field/` | The particle field: three.js `WebGLRenderer` + `GPUComputationRenderer` (positions and velocities live in float textures). `Field.ts` owns the loop, tiers, text mask and teardown; `shaders.ts` holds the GLSL |
 | `src/data/hero-trace.json` | The hero trace: one real GRABMyo recording, produced by `research/hero_trace.py` |
 | `.github/workflows/ci.yml` | check, build, budget, Lighthouse with the quality gate, rebuild with measured numbers, deploy to Vercel |
 
 Rules the code keeps: text is always HTML, never particles; colour means state (bone reads, olive rests, bronze signals, verdigris drifts); no number without a `source`; no analytics.
 
-## Budgets (Phase 2 measured)
+## The field
 
-- HTML + inlined CSS + fonts, worst case per page: 93 to 100 KB (limit 150 KB). JS: 0 bytes.
+- Formations so far: `swarm` (idle drift on a curl-noise flow, each particle steered toward a slowly wandering home) and `trace` (critically damped springs onto the same GRABMyo recording the SVG hero draws; scrolling advances it). The hero section switches between them through the bus.
+- Particles start on whatever formation the page shows, so nothing animates on load. They only move fast in response to the visitor: pointer (140 px push), scroll, section changes.
+- Particles fade near text: a 1/8-resolution mask of text boxes, blurred, multiplies their alpha.
+- Tiers: no hardware WebGL2 or float targets, or a software renderer, gives the static SVG. Phones start and stay at mid (76² = 5,776). Desktop starts at mid and a 1 s fps probe promotes it to high (128² = 16,384) at 57 fps or more; under 30 fps it steps down once, then gives up to the static SVG. DPR is capped at 1.5 (mid) or 2 (high).
+- `prefers-reduced-motion`: no animation loop. The field is placed on its formation and drawn once, and redrawn when you scroll or resize.
+- Hidden tab: the loop stops. `pagehide`: every GPU resource is disposed.
+
+## Budgets
+
+- HTML + inlined CSS + fonts, worst case per page: 93 to 100 KB (limit 150 KB).
+- JS: the boot module is 2.4 KB gz (limit 4 KB). The field chunk loaded after paint is 134 KB gz (limit 200 KB). `npm run budget` checks all three.
 - Fonts: Fraunces (variable, Latin subset) 33 KB preloaded; Fraunces italic 40 KB and JetBrains Mono 18 KB load on use.
 
 ## Add a project

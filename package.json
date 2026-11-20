@@ -15,10 +15,12 @@
     "lighthouse": "node scripts/lighthouse.mjs"
   },
   "dependencies": {
-    "astro": "7.4.13"
+    "astro": "7.4.13",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
+    "@types/three": "^0.187.0",
     "chrome-launcher": "^1.2.3",
     "lighthouse": "^13.6.0",
     "typescript": "6.0.3"

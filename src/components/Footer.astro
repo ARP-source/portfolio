@@ -5,7 +5,14 @@ import { site } from '../site.config';
 // Absent locally or before the first CI run: then the footer shows no score at all.
 const found = import.meta.glob<{ default: LighthouseResult }>('../data/lighthouse.json', { eager: true });
 type Scores = { performance: number; accessibility: number; bestPractices: number; seo: number };
-type LighthouseResult = { measuredAt: string; url: string; lighthouse: string; mobile: Scores; desktop: Scores };
+type LighthouseResult = {
+  measuredAt: string;
+  url: string;
+  lighthouse: string;
+  mobile: Scores;
+  desktop: Scores;
+  field?: { url: string; mobile: Scores; desktop: Scores };
+};
 const lh = Object.values(found)[0]?.default;
 const year = new Date().getFullYear();
 ---
@@ -31,7 +38,15 @@ const year = new Date().getFullYear();
           mobile performance <span class="signal">{lh.mobile.performance}</span> · desktop{' '}
           <span class="signal">{lh.desktop.performance}</span> · accessibility{' '}
           <span class="signal">{lh.mobile.accessibility}</span> · best practices{' '}
-          <span class="signal">{lh.mobile.bestPractices}</span>
+          <span class="signal">{lh.mobile.bestPractices}</span>. Headless Chrome has no GPU, so that run
+          shows the static trace.
+          {lh.field && (
+            <>
+              {' '}With the particle field forced on in software WebGL: mobile performance{' '}
+              <span class="signal">{lh.field.mobile.performance}</span> · desktop{' '}
+              <span class="signal">{lh.field.desktop.performance}</span>.
+            </>
+          )}
         </p>
       )
     }

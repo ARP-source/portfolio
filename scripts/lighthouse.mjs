@@ -1,7 +1,7 @@
 // Runs Lighthouse against a served build (default: `astro preview` on :4321), 3 runs per form factor,
 // takes the median performance run, and writes src/data/lighthouse.json for the footer.
 // CI runs this, then rebuilds so the footer carries the measured numbers. Never edit the JSON by hand.
-import { writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import lighthouse from 'lighthouse';
 import desktopConfig from 'lighthouse/core/config/desktop-config.js';
 import * as chromeLauncher from 'chrome-launcher';
@@ -11,7 +11,11 @@ const paths = (process.env.LH_PATHS ?? '/').split(',');
 const runs = Number(process.env.LH_RUNS ?? 3);
 const chrome = await chromeLauncher.launch({
   chromePath: process.env.CHROME_PATH,
-  chromeFlags: ['--headless=new', '--no-sandbox', '--disable-gpu'],
+  // LH_GL=1 gives headless Chrome a software WebGL2 (SwiftShader) so paths with ?tier=mid load and run
+  // the particle field during the audit; without it the field takes its static fallback.
+  chromeFlags: ['--headless=new', '--no-sandbox'].concat(
+    process.env.LH_GL ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--disable-gpu'],
+  ),
 });
 
 const score = (lhr, k) => Math.round((lhr.categories[k]?.score ?? 0) * 100);
@@ -51,7 +55,13 @@ try {
   chrome.kill();
 }
 
-if (process.env.LH_WRITE !== '0') {
+if (process.env.LH_MERGE_AS) {
+  // Second pass (e.g. the field forced on with software WebGL): add its first path's scores under a key.
+  const file = JSON.parse(await readFile('src/data/lighthouse.json', 'utf8'));
+  const p0 = paths[0];
+  file[process.env.LH_MERGE_AS] = { url: p0, mobile: results[`${p0} mobile`], desktop: results[`${p0} desktop`] };
+  await writeFile('src/data/lighthouse.json', JSON.stringify(file, null, 2) + '\n');
+} else if (process.env.LH_WRITE !== '0') {
   const home = (f) => results[`/ ${f}`];
   await mkdir('src/data', { recursive: true });
   await writeFile(

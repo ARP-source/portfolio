@@ -39,5 +39,8 @@ const canonical = site.url ? new URL(Astro.url.pathname, site.url).href : undefi
       <slot />
     </main>
     <Footer />
+    <script>
+      import '../scripts/boot';
+    </script>
   </body>
 </html>

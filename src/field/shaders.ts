@@ -194,6 +194,7 @@ uniform vec2 uRoute[${ROUTE_N}];
 const float LEAVE=${f(REFORM.leaveS)};
 const float T_ROUTE=${f(REFORM.traceRouteS)}, T_SPREAD=${f(REFORM.traceSpreadS)}, T_RUN=${f(REFORM.traceRunS)}, T_HOLD=${f(REFORM.traceHoldS)};
 const float H_IN=${f(REFORM.handInS)}, H_SPIN=${f(REFORM.handSpinS)}, H_BUILD=${f(REFORM.handBuildS)}, H_LAND=${f(REFORM.handLandS)}, H_HOLD=${f(REFORM.handHoldS)};
+uniform float uSpinT;       // seconds of real time into the re-form: the tornado's angle, whatever uPace is
 const float SPIN_FOOT=${f(REFORM.spinFoot)}, SPIN_TOP=${f(REFORM.spinTop)};
 vec2 routeAt(float t){
   float x=clamp(t,0.0,1.0)*${ROUTE_N - 1}.0; int i=int(min(floor(x),${ROUTE_N - 2}.0));
@@ -210,25 +211,30 @@ float arriveAt(vec4 h, float seed){
 }
 // Eased a little: no lurch leaving the flock, and slow enough at the end to make the turn onto the line.
 float ease(float x){ x=clamp(x,0.0,1.0); return mix(x,x*x*(3.0-2.0*x),0.6); }
-// Tornado: when the sweep reaches this dot's height and it drops onto its point.
+// Tornado: when the sweep reaches this dot's height and it starts to spiral onto its point.
 float landAt(vec2 uv){ return LEAVE+H_IN+H_SPIN+handHeight(uv)*H_BUILD; }
+// How far a hand dot has come down from its orbit onto its point: 0 orbiting .. 1 on it.
+float handLand(vec2 uv, float T){
+  float a=clamp((T-landAt(uv))/H_LAND,0.0,1.0); return a*a*(3.0-2.0*a);
+}
 // Its orbit: the altitude is its point's height with a little spread, so the column is continuous.
-// Returns the screen position; c is cos/sin of its angle (sin is toward the viewer).
+// The angle runs on real time (uSpinT, with T's lead over the current clock taken back to real
+// seconds), so a hurried re-form never whips the dots round faster than they can follow.
+// Landing, it keeps turning while its ring closes in and the ring's centre slides onto its point,
+// so it spirals onto the hand instead of cutting across it. c is cos/sin of its angle.
 vec2 tornado(float seed, vec2 uv, float T, float spread, out vec2 c){
   vec4 R4=uHandRect;
   float alt=clamp(handHeight(uv)+(fract(seed*6.11)-0.5)*0.12,0.0,1.0);
   float r=R4.z*(0.05+0.42*pow(alt,1.3))*(0.75+0.5*fract(seed*8.37))*spread;
-  float th=6.2832*fract(seed*3.17)+mix(SPIN_FOOT,SPIN_TOP,alt)*T;
+  float st=uSpinT+(T-uReform)/max(uPace,1.0);
+  float th=6.2832*fract(seed*3.17)+mix(SPIN_FOOT,SPIN_TOP,alt)*st;
   c=vec2(cos(th),sin(th));
   // The column leans and snakes a little, more at the top, like a real funnel.
-  float cx=R4.x+R4.z*0.5+sin(alt*4.0-T*2.2)*R4.z*0.05*alt;
-  float y=mix(R4.y+R4.w*0.98,R4.y+R4.w*0.04,alt);
+  vec2 centre=vec2(R4.x+R4.z*0.5+sin(alt*4.0-st*1.6)*R4.z*0.05*alt, mix(R4.y+R4.w*0.98,R4.y+R4.w*0.04,alt));
+  float a=handLand(uv,T);
+  if(a>0.0){ float depth; centre=mix(centre,handTarget(uv,depth),a); r*=1.0-a; }
   // Seen from a little above: each ring is a flat ellipse.
-  return vec2(cx+r*c.x,y+r*0.12*c.y);
-}
-// How far a hand dot has dropped from its orbit onto its point: 0 orbiting .. 1 on it.
-float handLand(vec2 uv, float T){
-  float a=clamp((T-landAt(uv))/H_LAND,0.0,1.0); return a*a*(3.0-2.0*a);
+  return centre+vec2(r*c.x,r*0.12*c.y);
 }
 // The hand's depth during a re-form: the tornado's own while spinning, the hand's once landed.
 float reformDepth(vec4 h, float seed, vec2 uv, float depth){
@@ -270,10 +276,8 @@ vec2 reformWaypoint(vec4 h, float seed, vec2 uv, float T){
   float l=leaveAt(seed), x=clamp((T-l)/H_IN,0.0,1.0), e=x*x*(3.0-2.0*x);
   vec2 c; vec2 orbit=tornado(seed,uv,T,mix(2.4,1.0,e),c);
   vec2 from=flockSlot(h,uFlockT-(uReform-l));
-  vec2 p=clamp(mix(from,orbit,e),m,uViewport-m);
-  // Built: the sweep has passed its height, so it drops out of the orbit onto its point.
-  float depth; vec2 tg=handTarget(uv,depth);
-  return mix(p,tg,handLand(uv,T));
+  // Built: once the sweep passes its height, tornado() spirals it onto its point.
+  return handLand(uv,T)>0.0 ? orbit : clamp(mix(from,orbit,e),m,uViewport-m);
 }
 `;
 

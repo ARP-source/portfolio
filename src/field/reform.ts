@@ -21,15 +21,16 @@ export const REFORM = {
   traceHoldS: 0.2,
   /** Hand: the spiral in from the flock to the tornado, a moment of spinning once it has gathered,
    *  the sweep that builds the hand from the wrist (first) to the fingertips (last), how long each
-   *  dot takes to drop from its orbit onto its point, and a short hold before it counts as landed. */
+   *  dot takes to spiral from its orbit onto its point, and a short hold before it counts as landed. */
   handInS: 0.9,
-  handSpinS: 0.8,
+  handSpinS: 0.6,
   handBuildS: 1.4,
-  handLandS: 0.4,
+  handLandS: 0.6,
   handHoldS: 0.1,
-  /** Tornado spin, radians per second: fastest at the narrow foot, slower at the wide top. */
-  spinFoot: 6.5,
-  spinTop: 3.5,
+  /** Tornado spin, radians per real second (a hurried re-form does not spin it faster): fastest at
+   *  the narrow foot, slower at the wide top. Kept low enough to read smoothly at 30 fps. */
+  spinFoot: 4.5,
+  spinTop: 2.5,
   get totalS() {
     const trace = this.leaveS + this.traceRouteS + Math.max(this.traceSpreadS + 0.15, this.traceRunS) + this.traceHoldS;
     const hand = this.leaveS + this.handInS + this.handSpinS + this.handBuildS + this.handLandS + this.handHoldS;

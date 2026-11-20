@@ -148,7 +148,7 @@ export class Field {
   #releaseLead = 0;
   /** Re-forming along the drawn routes: waits until the hero is on screen, then runs REFORM.totalS
    *  of simulation time (so a slow frame slows the whole procession instead of leaving dots behind). */
-  #reform = { pending: false, start: -1, t: 0, pace: 1 };
+  #reform = { pending: false, start: -1, t: 0, pace: 1, spin: 0 };
   #handM: Float32Array<ArrayBuffer> = handWorld(0);
   #bones = new Float32Array(BONES * 16);
   #grip = 0;
@@ -238,6 +238,7 @@ export class Field {
       uTraceN: { value: pts.length },
       uClipN: { value: PER_CLIP },
       uReform: { value: -1 },
+      uSpinT: { value: 0 },
       uRoute: { value: traceRoute() },
       uPixelRatio: { value: 1 },
       uTissue: { value: c(palette.tissue) },
@@ -333,7 +334,7 @@ export class Field {
     // flies in from there.
     if (to === 0 && this.#form.value > 0.5 && !this.#traceNear() && this.#sim) {
       this.#form = { from: 0, to: 0, p: 0, pace: this.#pace(), value: 0 };
-      this.#reform = { pending: false, start: -1, t: 0, pace: 1 };
+      this.#reform = { pending: false, start: -1, t: 0, pace: 1, spin: 0 };
       this.#shared.uReform!.value = -1;
       this.#shared.uAbort!.value = 0;
       this.#holdFlock('top');
@@ -343,7 +344,7 @@ export class Field {
     const reforming = this.#reform.pending || this.#reform.start >= 0;
     if (reforming && to === 1) return;
     const midReform = this.#reform.start >= 0;
-    this.#reform = { pending: false, start: -1, t: 0, pace: 1 };
+    this.#reform = { pending: false, start: -1, t: 0, pace: 1, spin: 0 };
     this.#shared.uReform!.value = -1;
     this.#shared.uAbort!.value = 0;
     // Leaving: the flock gathers where the hero is and drifts off from there.
@@ -643,6 +644,7 @@ export class Field {
       r.pending = false;
       r.start = now;
       r.t = 0;
+      r.spin = 0;
       r.pace = this.#pace();
       this.#form = { from: 1, to: 1, p: 1, pace: 1, value: 1 };
     }
@@ -650,6 +652,9 @@ export class Field {
     r.pace = Math.max(r.pace, this.#pace());
     this.#shared.uPace!.value = r.pace;
     r.t += dt * r.pace;
+    // The tornado turns on real time: a hurried re-form shortens it, never spins it faster.
+    r.spin += dt;
+    this.#shared.uSpinT!.value = r.spin;
     if (r.t > REFORM.totalS + 0.6) {
       r.start = -1;
       this.#shared.uReform!.value = -1;

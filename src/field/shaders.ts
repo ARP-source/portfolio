@@ -1,4 +1,4 @@
-import { BONES, HAND_CAM } from './hand';
+import { HAND_CAM } from './hand';
 
 /**
  * GLSL for the Field. Units are CSS pixels in viewport space; y grows downward like the DOM.
@@ -48,8 +48,8 @@ vec2 curl2(vec3 p){
 const handChunk = /* glsl */ `
 uniform float uHandOn;
 uniform vec4 uHandRect;     // x, y, w, h in CSS px
-uniform mat4 uBones[${BONES}];
-uniform sampler2D uHandLocal; // xyz bone-space sample, w bone index
+uniform mat4 uHandM;        // the hand's turn and tilt
+uniform sampler2D uHandLocal; // xyz point on the hand
 const float HAND_SPLIT=0.6;
 const float HAND_CAM=${HAND_CAM.toFixed(1)};
 bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
@@ -60,9 +60,8 @@ float formWeight(vec4 h, float seed, float form){
   return f*f*(3.0-2.0*f);
 }
 vec2 handTarget(vec2 uv, out float depth){
-  vec4 L=texture2D(uHandLocal,uv);
-  vec3 w=(uBones[int(L.w+0.5)]*vec4(L.xyz,1.0)).xyz;
-  float scale=min(uHandRect.w/2.6,uHandRect.z/1.9);
+  vec3 w=(uHandM*vec4(texture2D(uHandLocal,uv).xyz,1.0)).xyz;
+  float scale=min(uHandRect.w/2.2,uHandRect.z/1.9);
   float persp=HAND_CAM/(HAND_CAM-w.z);
   depth=w.z;
   return vec2(uHandRect.x+uHandRect.z*0.5+w.x*scale*persp, uHandRect.y+uHandRect.w*0.5-w.y*scale*persp);
@@ -139,10 +138,15 @@ void main(){
   float sp=length(desired); if(sp>320.0) desired*=320.0/sp;
   vec2 aSwarm=(desired-vel)*2.0;
 
-  // Hero: critically damped spring to a point on the hand or the recorded EMG line.
+  // Hero: swim to a point on the hand or the recorded EMG line at a capped speed, the same
+  // unhurried pace as the break-up, then settle on it with a stiff spring once close.
   float s, depth; vec2 target=heroTarget(H,seed,uv,s,depth);
+  vec2 to=target-pos; float dist=length(to);
+  vec2 seek=to*2.2+school*40.0*smoothstep(40.0,200.0,dist);
+  float ss=length(seek); if(ss>420.0) seek*=420.0/ss;
   const float k=60.0;
-  vec2 aTrace=k*(target-pos)-2.0*sqrt(k)*vel;
+  vec2 aSpring=k*to-2.0*sqrt(k)*vel;
+  vec2 aTrace=mix(aSpring,(seek-vel)*3.0,smoothstep(8.0,40.0,dist));
 
   float fw=formWeight(H,seed,uForm);
   vec2 acc=mix(aSwarm,aTrace,fw);
@@ -156,8 +160,11 @@ void main(){
   // Activation: ink where the recording spikes or the pointer touched, tissue at rest.
   float act=max(fw*smoothstep(0.15,0.8,abs(s)), push);
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
-  if(uSnap>0.5){ vel=vec2(0.0); z=0.0; }
-  gl_FragColor=vec4(vel,z,1.0);
+  // Arrived: latches once a particle reaches its point, so it then rides the playing trace
+  // exactly; it clears as soon as the particle is released.
+  float arrived=fw>0.85 ? (dist<10.0 || V.w>0.0 ? min(1.0,V.w+uDt*4.0) : 0.0) : 0.0;
+  if(uSnap>0.5){ vel=vec2(0.0); z=0.0; arrived=0.0; }
+  gl_FragColor=vec4(vel,z,arrived);
 }
 `;
 
@@ -177,8 +184,9 @@ void main(){
     pos.y=hy+mod(pos.y-hy+0.5*span,span)-0.5*span;
   }
   // Once the trace formation has settled, lock particles to the line: no spring lag while it plays.
-  float lock=smoothstep(0.85,1.0,fw);
   float s, depth; vec2 target=heroTarget(H,P.w,uv,s,depth);
+  // Lock onto the line only once arrived, so re-forming is a swim, never a jump.
+  float lock=smoothstep(0.85,1.0,fw)*max(V.w,1.0-smoothstep(3.0,24.0,length(target-pos)));
   if(lock>0.0) pos=mix(pos,target,lock);
   if(uSnap>0.5) pos=swarmHome(H);
   // z carries the hand's depth to the point shader (near dots larger and darker).

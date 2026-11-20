@@ -52,4 +52,9 @@ const lazyOk = lazyTotal <= LAZY_LIMIT && (boots.size === 0 || lazy.size > 0);
 failed ||= !bootOk || !lazyOk;
 console.log(`${bootOk ? 'ok  ' : 'FAIL'}  ${kb(bootTotal)}  boot module (limit 4 KB)`);
 console.log(`${lazyOk ? 'ok  ' : 'FAIL'}  ${kb(lazyTotal)}  after-paint field chunk${lazy.size === 1 ? '' : 's'} (limit 200 KB): ${[...lazy].join(', ')}`);
+// The hand's point cloud loads with the field, after paint.
+const handGz = gz(await readFile(join(DIST, 'hand.bin')));
+const handOk = handGz <= 64 * 1024;
+failed ||= !handOk;
+console.log(`${handOk ? 'ok  ' : 'FAIL'}  ${kb(handGz)}  hand point cloud (limit 64 KB)`);
 process.exit(failed ? 1 : 0);

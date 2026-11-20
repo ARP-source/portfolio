@@ -1,6 +1,6 @@
 /**
  * Re-forming the hero after the visitor scrolls back up. The flock streams out of itself along the
- * route Raag drew: up the left side, over the top, a small spin, and back down to the line's left
+ * route Raag drew: up the left side, over the top, down the right and back along to the line's left
  * end, where the trace draws itself from left to right like a pen. The hand's dots ride the same
  * stream, peel off, swoop in at the wrist and rise into place, so it fills in from the wrist up. The
  * shader (reformChunk in shaders.ts) does the motion; this file holds the timing and the route.
@@ -11,9 +11,9 @@ export const REFORM = {
   /** Dots leave the flock over this window, so it stretches into a stream instead of jumping. */
   leaveS: 0.6,
   /** Trace: time from the flock to the line, the spread between first and last arrival (short, so
-   *  the loop and spin read as a band), and the time to run the whole line. The dot bound for the
+   *  the loop reads as a band), and the time to run the whole line. The dot bound for the
    *  right end arrives first and nobody overtakes; the left end settles last. */
-  traceRouteS: 2.5,
+  traceRouteS: 2.1,
   traceSpreadS: 0.5,
   traceRunS: 1.0,
   /** Hand: how far along the route its dots peel off (0..1), the swoop round to the wrist, and the
@@ -39,9 +39,7 @@ const DRAWN: [number, number][] = [
   // up the left side, above the name, across the top and down the right
   [100, 880], [100, 600], [100, 300], [130, 130], [250, 55], [500, 40], [900, 45], [1200, 70], [1340, 150],
   [1370, 260], [1300, 420], [1270, 505],
-  // the spin, clockwise, in the open space between the text and the hand
-  [1130, 530], [890, 495], [805, 390], [890, 285], [1080, 245], [1230, 290], [1305, 400], [1270, 510],
-  // and back down to the line's left end
+  // and back down to the line's left end, in one pass
   [1100, 575], [800, 610], [550, 650], [330, 700], [265, 757],
 ];
 export const ROUTE_N = 48;

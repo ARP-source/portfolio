@@ -260,9 +260,9 @@ void main(){
   vec2 slot=flockSlot(H,uFlockT);
   vec2 slotV=(flockSlot(H,uFlockT+0.05)-slot)*20.0;
   vec2 flow=curl2(vec3(pos/170.0,uTime*0.12+seed*0.1));
-  vec2 desired=slotV+(slot-pos)*1.4+flow*14.0;
-  float sp=length(desired); if(sp>900.0) desired*=900.0/sp;
-  vec2 aSwarm=(desired-vel)*3.0;
+  vec2 desired=slotV+(slot-pos)*2.0+flow*14.0;
+  float sp=length(desired); if(sp>1400.0) desired*=1400.0/sp;
+  vec2 aSwarm=(desired-vel)*4.0;
 
   // Hero: swim to a point on the hand or the recorded EMG line at a capped speed, the same
   // unhurried pace as the break-up, then settle on it with a stiff spring once close.

@@ -13,6 +13,7 @@ const f = (n: number) => n.toFixed(3);
 const formChunk = /* glsl */ `
 uniform float uHandOn;
 uniform float uReform;      // seconds into a re-form along the drawn routes; < 0 when not re-forming
+uniform float uAbort;       // 1 after scrolling away mid re-form: dots not yet on the shape rejoin the flock
 const float HAND_SPLIT=0.6;
 bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
 float traceU(vec4 h){ return uHandOn>0.5 ? h.w/HAND_SPLIT : h.w; }
@@ -22,6 +23,10 @@ float formWeight(vec4 h, float seed, float form){
   float st=isHand(h) ? 0.78+0.2*fract(seed*7.31) : traceU(h)*0.72+0.06*fract(seed*3.7);
   float f=clamp((form-st*0.7)/0.3,0.0,1.0);
   return f*f*(3.0-2.0*f);
+}
+// The same, given the particle's velocity texel (V.w > 0.5: it has landed on its point).
+float formWeightV(vec4 h, float seed, float form, vec4 V){
+  return (uAbort>0.5 && V.w<0.5) ? 0.0 : formWeight(h,seed,form);
 }
 `;
 
@@ -86,79 +91,132 @@ vec2 handTarget(vec2 uv, out float depth){
 `;
 
 /**
- * Re-forming along Raag's drawn routes (timing and the trace route live in reform.ts). Each
- * particle follows a waypoint that moves along its route; reformDone() is 0 until it has landed
- * on its own point, and until then nothing locks it to the shape.
+ * The flock: away from the hero every dot flies in one murmuration, like starlings at dusk. Each dot
+ * has a fixed place in the flock's body (its home mapped onto a disc, front to back by home x, so the
+ * dots that make the right end of the trace and the hand fly at the front). The body travels a slow
+ * loop across the screen; the back follows the front's path a moment later, so the flock bends
+ * through its turns, and slow noise and a rolling density wave keep its outline changing. The
+ * dots steer toward their places rather than sitting on them, so the whole thing flows.
+ * It lives in viewport space and never wraps, so no dot ever appears out of nowhere.
+ */
+const flockChunk = /* glsl */ `
+uniform float uFlockT;      // the flock's clock, seconds
+uniform vec3 uAnchor;       // xy: where the flock is held (the hero it just left), z: 0 held .. 1 free
+uniform float uKick;        // px: a scroll drags the flock a little, then it catches up
+vec2 flockPath(float t){
+  vec2 w=vec2(sin(t*0.17)+0.3*sin(t*0.41+1.3), sin(t*0.23+0.6)+0.3*sin(t*0.53+2.1))/1.3;
+  return uViewport*(vec2(0.5,0.5)+w*vec2(0.3,0.24));
+}
+// Square to disc, area-preserving (Shirley and Chiu), so the flock is evenly filled.
+vec2 toDisc(vec2 q){
+  if(abs(q.x)+abs(q.y)<1e-5) return vec2(0.0);
+  float r, a;
+  if(abs(q.x)>abs(q.y)){ r=q.x; a=0.7853982*(q.y/q.x); } else { r=q.y; a=1.5707963-0.7853982*(q.x/q.y); }
+  return r*vec2(cos(a),sin(a));
+}
+vec2 flockSlot(vec4 h, float ft){
+  vec2 d=toDisc(h.xy*2.0-1.0);              // x: back (-1) to front (+1), y: across
+  float tt=ft*0.09;
+  d+=0.3*vec2(snoise(vec3(d*1.2,tt)),snoise(vec3(d*1.2+11.0,tt)));
+  d.x+=0.06*sin(d.x*5.0-ft*1.6);              // a density wave rolling back through the flock
+  float tau=ft-1.4*(1.0-d.x)*0.5;            // the back flies where the front was
+  vec2 p=flockPath(tau), T=flockPath(tau+0.25)-p;
+  T=length(T)>1e-3 ? normalize(T) : vec2(1.0,0.0);
+  vec2 N=vec2(-T.y,T.x);
+  float L=uViewport.x*(0.2+0.05*sin(ft*0.13)), W=uViewport.y*(0.15+0.05*sin(ft*0.19+1.0));
+  vec2 c=flockPath(ft);
+  vec2 body=p-c+T*d.x*L*0.5+N*d.y*W;
+  float k=smoothstep(0.0,1.0,uAnchor.z);
+  return mix(uAnchor.xy,c,k)+body*mix(0.7,1.0,k)+vec2(0.0,uKick);
+}
+`;
+
+/**
+ * Re-forming (timing and the route live in reform.ts). Each particle follows a waypoint; reformDone()
+ * is 0 until it has landed on its own point, and until then nothing locks it to the shape.
  *
- * Trace: the swarm gathers at the left, rises, loops over the top, spins once and comes back to the
- * line's left end, then runs along the line to its own spot. The particle bound for the right end
- * leads, so nobody overtakes and the line draws itself from left to right like a pen.
- * Hand: the swarm rises up the right side, comes over the top and twirls down around the hand,
- * then twirls back up, the lowest points landing first, so the hand forms from the wrist up.
+ * Every dot leaves the flock from wherever it is flying and merges into the drawn route, so the
+ * flock pours out of itself as one stream. Trace dots arrive at the line's left end in order, the
+ * one bound for the right end first, then run along the line to their spots, so it draws from left
+ * to right like a pen. Hand dots ride the same stream, peel off over the hand, twirl down around it
+ * and twirl back up, the lowest points landing first, so the hand forms from the wrist up.
  */
 const reformChunk = /* glsl */ `
 uniform vec2 uRoute[${ROUTE_N}];
-const float GATHER=${f(REFORM.gatherS)};
+const float LEAVE=${f(REFORM.leaveS)};
 const float T_ROUTE=${f(REFORM.traceRouteS)}, T_SPREAD=${f(REFORM.traceSpreadS)}, T_RUN=${f(REFORM.traceRunS)};
-const float H_ROUTE=${f(REFORM.handRouteS)}, H_SPREAD=${f(REFORM.handSpreadS)}, H_CLIMB=${f(REFORM.handClimbS)};
+const float H_BRANCH=${f(REFORM.handBranch)}, H_TURN=${f(REFORM.handTurnS)}, H_DESC=${f(REFORM.handDescendS)};
+const float H_SPREAD=${f(REFORM.handSpreadS)}, H_CLIMB=${f(REFORM.handClimbS)};
 const float TAU=6.2831853;
 vec2 routeAt(float t){
   float x=clamp(t,0.0,1.0)*${ROUTE_N - 1}.0; int i=int(min(floor(x),${ROUTE_N - 2}.0));
-  return mix(uRoute[i],uRoute[i+1],x-float(i));
+  vec2 r=mix(uRoute[i],uRoute[i+1],x-float(i));
+  return vec2(uTraceRect.x+r.x*uTraceRect.z, uTraceRect.y+uTraceRect.w*0.5+r.y*uTraceRect.z);
 }
 vec2 jitter(float seed){ return vec2(fract(seed*12.9898),fract(seed*78.233))-0.5; }
 float handHeight(vec2 uv){ return clamp((texture2D(uHandLocal,uv).y+1.0)*0.5,0.0,1.0); }
+// When it leaves the flock, and how long it then takes along the route (to the line's left end).
+float leaveAt(float seed){ return LEAVE*fract(seed*4.71); }
+float arriveAt(vec4 h, float seed){
+  return LEAVE+T_ROUTE+(isHand(h) ? fract(seed*2.31) : 1.0-traceU(h))*T_SPREAD;
+}
+// Eased a little: no lurch leaving the flock, and slow enough at the end to make the turn onto the line.
+float ease(float x){ x=clamp(x,0.0,1.0); return mix(x,x*x*(3.0-2.0*x),0.6); }
+float branchAt(vec4 h, float seed){
+  float l=leaveAt(seed); return l+H_BRANCH*(arriveAt(h,seed)-l);
+}
 float reformDone(vec4 h, float seed, vec2 uv){
   if(uReform<0.0) return 1.0;
-  float u=traceU(h);
   // Trace: lands when it reaches its spot, but never before it has fully joined the line (0.15 s).
-  float end=GATHER+(isHand(h) ? H_ROUTE+handHeight(uv)*(H_SPREAD+H_CLIMB) : T_ROUTE+(1.0-u)*T_SPREAD+max(u*T_RUN,0.15));
+  float end=isHand(h) ? branchAt(h,seed)+H_TURN+H_DESC+handHeight(uv)*(H_SPREAD+H_CLIMB)
+                      : arriveAt(h,seed)+max(traceU(h)*T_RUN,0.15);
   return step(end,uReform);
 }
 // Trace particles in the last stretch, running along the line: 0 before, ramps to 1 as they join it.
 float reformOnLine(vec4 h, float seed, float T){
   if(uReform<0.0 || isHand(h)) return 0.0;
-  return smoothstep(0.0,0.12,T-GATHER-(1.0-traceU(h))*T_SPREAD-T_ROUTE);
+  return smoothstep(0.0,0.12,T-arriveAt(h,seed));
+}
+// Along the route from where it left the flock: the first third bends it into the drawn path.
+vec2 onRoute(vec4 h, float seed, float T){
+  float l=leaveAt(seed), x=(T-l)/(arriveAt(h,seed)-l);
+  float e=ease(x);
+  vec2 from=flockSlot(h,uFlockT-(uReform-l));
+  vec2 p=mix(from,routeAt(e),smoothstep(0.0,0.35,x));
+  return p+jitter(seed)*70.0*(1.0-smoothstep(0.75,1.0,e))*smoothstep(0.0,0.2,x);
 }
 vec2 reformWaypoint(vec4 h, float seed, vec2 uv, float T){
   vec2 m=vec2(14.0);
-  T-=GATHER;
+  if(T<leaveAt(seed)) return flockSlot(h,uFlockT+(T-uReform));
   if(!isHand(h)){
-    float u=traceU(h), lag=(1.0-u)*T_SPREAD, tr=(T-lag)/T_ROUTE;
-    if(tr<1.0){
-      // Ease in and out a little: no lurch leaving the gather, and slow enough at the end to make
-      // the turn onto the line without swinging wide.
-      float e=clamp(tr,0.0,1.0); e=mix(e,e*e*(3.0-2.0*e),0.6);
-      vec2 r=routeAt(e);
-      vec2 p=vec2(uTraceRect.x+r.x*uTraceRect.z, uTraceRect.y+uTraceRect.w*0.5+r.y*uTraceRect.z);
-      p+=jitter(seed)*70.0*(1.0-smoothstep(0.75,1.0,e));
-      return clamp(p,m,uViewport-m);
-    }
-    float s; return traceLine(min(u,(T-lag-T_ROUTE)/T_RUN),seed,s);
+    float u=traceU(h), ar=arriveAt(h,seed);
+    if(T<ar) return onRoute(h,seed,T);
+    float s; return traceLine(min(u,(T-ar)/T_RUN),seed,s);
   }
-  float o=handHeight(uv), lag=o*H_SPREAD, tr=(T-lag)/H_ROUTE;
+  float tb=branchAt(h,seed);
+  if(T<tb) return onRoute(h,seed,T);
   vec4 R4=uHandRect;
   float cx=R4.x+R4.z*0.5, top=R4.y+R4.w*0.04, bot=R4.y+R4.w*0.96, rad=R4.z*0.38;
-  float xr=min(uViewport.x-28.0,R4.x+R4.z+R4.z*0.3);
-  vec2 jt=jitter(seed)*26.0;
-  if(tr<1.0){
-    vec2 p;
-    if(tr<0.3){
-      float a=smoothstep(0.0,1.0,max(tr,0.0)/0.3);
-      p=vec2(xr,mix(bot+R4.w*0.25,top,a));
-    } else if(tr<0.42){
-      float a=(tr-0.3)/0.12;
-      vec2 p0=vec2(xr,top), c=vec2(mix(xr,cx+rad,0.4),top-R4.w*0.16), p2=vec2(cx+rad,top);
-      p=(1.0-a)*(1.0-a)*p0+2.0*(1.0-a)*a*c+a*a*p2;
-    } else {
-      float c=(tr-0.42)/0.58, th=c*1.5*TAU;
-      p=vec2(cx+rad*cos(th),mix(top,bot,c)+0.3*rad*sin(th));
-    }
+  // Wide enough to stay a cloud, not a line of dots on one path; it closes in as each lands.
+  vec2 jt=jitter(seed)*vec2(70.0,50.0);
+  float tt=T-tb;
+  if(tt<H_TURN){
+    // Peel off: a curve from the stream to the top of the twirl.
+    float a=tt/H_TURN; a=a*a*(3.0-2.0*a);
+    vec2 p0=onRoute(h,seed,tb), p2=vec2(cx+rad,top), c=vec2(p2.x,min(p0.y,top)-R4.w*0.12);
+    return clamp((1.0-a)*(1.0-a)*p0+2.0*(1.0-a)*a*c+a*a*p2+jt*a,m,uViewport-m);
+  }
+  tt-=H_TURN;
+  if(tt<H_DESC){
+    float c=tt/H_DESC, th=c*1.5*TAU;
+    vec2 p=vec2(cx+rad*cos(th),mix(top,bot,c)+0.3*rad*sin(th));
     return clamp(p+jt,m,uViewport-m);
   }
+  tt-=H_DESC;
   // Twirl back up to its own point, closing in on it over the last part of the climb.
+  float o=handHeight(uv);
   float depth; vec2 tg=handTarget(uv,depth);
-  float a=clamp((T-lag-H_ROUTE)/max(o*H_CLIMB,0.06),0.0,1.0);
+  float a=clamp((tt-o*H_SPREAD)/max(o*H_CLIMB,0.06),0.0,1.0);
   float th=1.5*TAU+a*(0.5+o)*TAU, k=smoothstep(0.35,1.0,a), r=rad*(1.0-k);
   vec2 p=vec2(mix(cx,tg.x,k)+r*cos(th), mix(bot,tg.y,a)+0.3*r*sin(th));
   return p+jt*(1.0-k);
@@ -174,14 +232,14 @@ uniform vec2 uViewport;     // CSS px
 uniform vec4 uTraceRect;    // x, y, w, h of the hero SVG in CSS px
 uniform float uPhase;       // playback position along the looped clips, in clips
 uniform vec3 uPointer;      // x, y, strength
-uniform float uScrollDy;    // px scrolled since last step
-uniform float uScroll;      // total scrollY, for the swarm's parallax homes
-uniform float uSnap;        // 1 for a single step: place every particle at its swarm home, at rest
-uniform sampler2D uHome;    // xy swarm home (0..1), z size rank, w trace u
+uniform float uSnap;        // 1 for a single step: place every particle at its place in the flock, at rest
+uniform sampler2D uHome;    // xy place in the flock (0..1), z size rank, w trace u
 uniform sampler2D uTrace;   // N x 1, r = sample in [-1, 1]: every clip end to end
 uniform float uTraceN;
 uniform float uClipN;       // samples per clip
+${simplex3}
 ${handChunk}
+${flockChunk}
 
 // Position p in samples along the looped tape of clips; wraps from the last sample to the first.
 float traceAt(float p){
@@ -189,13 +247,6 @@ float traceAt(float p){
   float a=texelFetch(uTrace,ivec2(int(i),0),0).r;
   float b=texelFetch(uTrace,ivec2(int(mod(i+1.0,uTraceN)),0),0).r;
   return mix(a,b,x-i);
-}
-// Swarm homes scroll with the page at 30 % (parallax) and wrap in a band slightly taller than the viewport.
-const float WRAP_M=40.0;
-vec2 swarmHome(vec4 h){
-  float span=uViewport.y+2.0*WRAP_M;
-  float y=mod(h.y*span-uScroll*0.3,span)-WRAP_M;
-  return vec2(h.x*uViewport.x,y);
 }
 vec2 traceLine(float u, float seed, out float s){
   // The window is one clip wide; uPhase is the playback position in clips.
@@ -216,39 +267,26 @@ ${reformChunk}
 `;
 
 export const velocityShader = /* glsl */ `
-${simplex3}
 ${common}
 void main(){
   vec2 uv=gl_FragCoord.xy/resolution.xy;
   vec4 P=texture2D(texPos,uv); vec4 V=texture2D(texVel,uv); vec4 H=texture2D(uHome,uv);
   vec2 pos=P.xy; vec2 vel=V.xy; float seed=P.w;
 
-  // Swarm: each particle has a home that wanders slowly on a noise field; the particle is
-  // steered toward it with a little curl flow on top. Steering, not forcing, keeps it calm,
-  // and a capped speed means leaving the trace is a quick spread, not a jump.
-  vec2 home=swarmHome(H);
-  float tt=uTime*0.04;
-  home+=vec2(snoise(vec3(H.xy*3.0,tt)),snoise(vec3(H.xy*3.0+17.0,tt)))*70.0;
-  vec2 flow=curl2(vec3(pos/260.0,tt+seed*0.15));
-  // Schooling, like krill: a large, slowly turning current that neighbours share, so a released
-  // group travels together and fans out, instead of every dot racing straight to its own home.
-  vec2 school=curl2(vec3(pos/650.0,uTime*0.05+3.0));
-  float sl=length(school); school=sl>0.001 ? school/sl : vec2(0.0);
-  // Spooked: for a moment after a particle lets go of a shape it darts toward its spot in the
-  // swarm, fast and a little scattered, like krill when a predator shows, then settles back to
-  // the slow drift. V.w counts this down from -1 (see 'arrived' below).
-  float burst=max(-V.w,0.0);
-  vec2 dart=(home-pos)+vec2(snoise(vec3(seed*91.0,uTime*0.7,1.0)),snoise(vec3(seed*37.0,uTime*0.7,5.0)))*90.0*burst;
-  vec2 desired=mix((home-pos)*0.8+school*70.0+flow*4.0, dart*3.0, burst);
-  float cap=320.0+760.0*burst;
-  float sp=length(desired); if(sp>cap) desired*=cap/sp;
-  vec2 aSwarm=(desired-vel)*(2.0+5.0*burst);
+  // Flock: steer toward its place in the flock, matching the place's own speed, with a little
+  // small-scale flow so neighbours shimmer instead of moving as a rigid sheet.
+  vec2 slot=flockSlot(H,uFlockT);
+  vec2 slotV=(flockSlot(H,uFlockT+0.05)-slot)*20.0;
+  vec2 flow=curl2(vec3(pos/170.0,uTime*0.12+seed*0.1));
+  vec2 desired=slotV+(slot-pos)*1.4+flow*14.0;
+  float sp=length(desired); if(sp>900.0) desired*=900.0/sp;
+  vec2 aSwarm=(desired-vel)*3.0;
 
   // Hero: swim to a point on the hand or the recorded EMG line at a capped speed, the same
   // unhurried pace as the break-up, then settle on it with a stiff spring once close.
   float s, depth; vec2 target=heroTarget(H,seed,uv,s,depth);
   vec2 to=target-pos; float dist=length(to);
-  vec2 seek=to*2.2+school*40.0*smoothstep(40.0,200.0,dist);
+  vec2 seek=to*2.2;
   float ss=length(seek); if(ss>560.0) seek*=560.0/ss;
   const float k=60.0;
   vec2 aSpring=k*to-2.0*sqrt(k)*vel;
@@ -262,7 +300,7 @@ void main(){
     aTrace=(des-vel)*12.0;
   }
 
-  float fw=formWeight(H,seed,uForm);
+  float fw=formWeightV(H,seed,uForm,V);
   vec2 acc=mix(aSwarm,aTrace,fw);
 
   // The visitor's pointer pushes particles aside, within 140 px.
@@ -278,12 +316,9 @@ void main(){
   float act=max(fw*smoothstep(0.15,0.8,abs(s)), push);
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
   // Arrived: latches once a particle reaches its point, so it then rides the playing trace
-  // exactly; it clears as soon as the particle is released.
-  // w > 0: arrived on its shape point (latched, ramps to 1). w < 0: just released, counting up
-  // from -1 to 0 over about 0.9 s (the burst above).
-  float arrived;
+  // exactly (ramps to 1); it clears as soon as the particle is released.
+  float arrived=0.0;
   if(fw>0.85) arrived=(dist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
-  else arrived=V.w>0.5 ? -1.0 : min(0.0,V.w+uDt/0.9);
   if(done<0.5) arrived=0.0;
   if(uSnap>0.5){ vel=vec2(0.0); z=0.0; arrived=0.0; }
   gl_FragColor=vec4(vel,z,arrived);
@@ -296,17 +331,7 @@ void main(){
   vec2 uv=gl_FragCoord.xy/resolution.xy;
   vec4 P=texture2D(texPos,uv); vec4 V=texture2D(texVel,uv); vec4 H=texture2D(uHome,uv);
   vec2 pos=P.xy+V.xy*uDt;
-  float fw=formWeight(H,P.w,uForm);
-  // Swarm particles move rigidly with their parallax homes, so scrolling never stretches them.
-  pos.y-=uScrollDy*0.3*(1.0-fw);
-  // Keep each particle within half a band of its home: one wrap, never a band that hops every
-  // frame. Only off screen, so a dot never vanishes on one side and reappears on the other: a
-  // released dot swims down from the shape it left instead of popping up somewhere else.
-  if(fw<0.5 && (pos.y<-WRAP_M || pos.y>uViewport.y+WRAP_M)){
-    float span=uViewport.y+2.0*WRAP_M;
-    float hy=swarmHome(H).y;
-    pos.y=hy+mod(pos.y-hy+0.5*span,span)-0.5*span;
-  }
+  float fw=formWeightV(H,P.w,uForm,V);
   // Once the trace formation has settled, lock particles to the line: no spring lag while it plays.
   float s, depth; vec2 target=heroTarget(H,P.w,uv,s,depth);
   // Lock onto the line only once arrived, so re-forming is a swim, never a jump.
@@ -315,7 +340,7 @@ void main(){
   // Re-forming, running along the line to its spot: ride the playing line exactly, so it draws clean.
   float ol=reformOnLine(H,P.w,uReform)*(1.0-reformDone(H,P.w,uv));
   if(ol>0.0) pos=mix(pos,reformWaypoint(H,P.w,uv,uReform),ol);
-  if(uSnap>0.5) pos=swarmHome(H);
+  if(uSnap>0.5) pos=flockSlot(H,uFlockT);
   // z carries the hand's depth to the point shader (near dots larger and darker).
   gl_FragColor=vec4(pos,depth*fw,P.w);
 }
@@ -341,7 +366,7 @@ void main(){
   vec2 ndc=vec2(P.x/uViewport.x*2.0-1.0, 1.0-P.y/uViewport.y*2.0);
   gl_Position=vec4(ndc,0.0,1.0);
   vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w; vDepth=P.z;
-  vRecruit=formWeight(H,P.w,uForm);
+  vRecruit=formWeightV(H,P.w,uForm,V);
   // Swarm dots 2-3 px, big enough to read as ink; recruited dots swell a little; on the hand,
   // nearer dots are larger.
   gl_PointSize=(mix(2.0,3.0,H.z*H.z)+vRecruit*0.6)*(1.0+0.25*P.z)*uPixelRatio;

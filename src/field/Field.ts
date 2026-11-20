@@ -42,7 +42,11 @@ const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number
   // Under a line of text the dots fade to about 12 %; the CSS paper halo does the rest.
   halo: { strength: 0.88, pad: 4, blur: 3, lines: true },
 };
-const PARALLAX = 0.3, WRAP_M = 40;
+/**
+ * The flock (flockChunk in shaders.ts). Leaving the hero it is held where the hero was and drifts
+ * out to its own path over holdS; a scroll drags it by kick of the distance, then it catches up.
+ */
+const FLOCK = { holdS: 6, kick: 0.25, kickMax: 0.22, catchUp: 1.2 };
 /** How long the hero takes to dissolve into the swarm; each particle's own release is a slice of it. */
 const RELEASE_MS = 2600;
 /** Re-forming in place (reduced motion, or scrolling back before the hero has fully let go). */
@@ -95,6 +99,9 @@ export class Field {
   #time = 0;
   #scrollY = scrollY;
   #scrollDy = 0;
+  /** hold: where the flock is held while k runs 0 -> 1 (the hero it left, or just above the screen). */
+  #flock = { hold: 'free' as 'free' | 'hero' | 'top', k: 1, x: 0, y: 0, kick: 0 };
+  #snapNext = false;
   #form = { from: 0, to: 0, start: 0, value: 0 };
   /** Re-forming along the drawn routes: waits until the hero is on screen, then runs REFORM.totalS
    *  of simulation time (so a slow frame slows the whole procession instead of leaving dots behind). */
@@ -158,8 +165,10 @@ export class Field {
       uTraceRect: { value: [0, 0, 1, 1] },
       uPhase: { value: 0 },
       uPointer: { value: [-1e4, -1e4, 0] },
-      uScrollDy: { value: 0 },
-      uScroll: { value: scrollY },
+      uFlockT: { value: 0 },
+      uAnchor: { value: [0, 0, 1] },
+      uKick: { value: 0 },
+      uAbort: { value: 0 },
       uSnap: { value: 0 },
       uMaskStrength: { value: MASK_MODES[maskMode()].strength },
       uTrace: { value: this.#traceTex },
@@ -231,28 +240,41 @@ export class Field {
     const to = FORM_VALUE[name];
     if (to === undefined) return;
     const now = performance.now();
-    // Leaving the trace after it has already scrolled out of view (a fast scroll): don't fly thousands
-    // of particles back from off-screen. Place them at their swarm homes and fade the field back in.
+    // Leaving the trace after it has already scrolled far out of view (a fast scroll): don't fly
+    // thousands of particles back from far off-screen. The flock starts just above the screen and
+    // flies in from there.
     if (to === 0 && this.#form.value > 0.5 && !this.#traceNear() && this.#sim) {
       this.#form = { from: 0, to: 0, start: now, value: 0 };
-      this.#shared.uSnap!.value = 1;
-      this.#step(1 / 60);
-      this.#shared.uSnap!.value = 0;
-      this.#fade = 0;
+      this.#reform = { pending: false, start: -1, t: 0 };
+      this.#shared.uReform!.value = -1;
+      this.#shared.uAbort!.value = 0;
+      this.#holdFlock('top');
+      this.#snapNext = true;
       return;
     }
     const reforming = this.#reform.pending || this.#reform.start >= 0;
     if (reforming && to === 1) return;
+    const midReform = this.#reform.start >= 0;
     this.#reform = { pending: false, start: -1, t: 0 };
     this.#shared.uReform!.value = -1;
+    this.#shared.uAbort!.value = 0;
+    // Leaving: the flock gathers where the hero is and drifts off from there.
+    if (to === 0 && this.#form.value > 0.5) this.#holdFlock(this.#o.reducedMotion ? 'free' : 'hero');
     // Back to the hero from the swarm: wait for it to come on screen, then swim the drawn routes.
     if (to === 1 && !instant && !this.#o.reducedMotion && this.#form.value < 0.5 && this.#sim) {
       this.#reform.pending = true;
       return;
     }
-    // Leaving mid re-form: let go from wherever each particle is.
-    if (to === 0 && reforming && this.#form.value === 1) {
+    // Leaving mid re-form: dots still on their way rejoin the flock at once; the ones already on
+    // the shape let go in the usual order.
+    if (to === 0 && midReform && this.#form.value === 1) {
+      this.#shared.uAbort!.value = 1;
       this.#form = { from: 1, to: 0, start: now, value: 1 };
+      return;
+    }
+    if (to === 0 && reforming) {
+      // Was only waiting for the hero to come into view: nothing has moved yet.
+      this.#form = { from: 0, to: 0, start: now, value: 0 };
       return;
     }
     this.#form = { from: instant ? to : this.#form.value, to, start: now, value: instant ? to : this.#form.value };
@@ -292,7 +314,7 @@ export class Field {
     if (this.#o.halfFloat) gpu.setDataType(HalfFloatType);
     const n = size * size;
 
-    // Swarm homes: a jittered grid, so the idle field covers the page evenly.
+    // Homes: a jittered grid over 0..1, each dot's fixed place in the flock (see flockChunk).
     const homes = new Float32Array(n * 4);
     const cols = Math.ceil(Math.sqrt(n * (this.#vw / Math.max(this.#vh, 1))));
     const rows = Math.ceil(n / cols);
@@ -357,6 +379,7 @@ export class Field {
     this.#updateTraceRect();
     const [rx, ry, rw, rh] = this.#shared.uTraceRect!.value as number[];
     const onTrace = this.#form.value > 0.5;
+    this.#snapNext = !onTrace;
     const handOn = this.#shared.uHandOn!.value === 1;
     for (let i = 0; i < n; i++) {
       const seed = Math.random();
@@ -371,10 +394,9 @@ export class Field {
         pa[i * 4] = rx! + u * rw!;
         pa[i * 4 + 1] = ry! + rh! * 0.5 - sv * rh! * 0.44 + (((seed * 7.13) % 1) - 0.5) * 2.4;
       } else {
-        const span = this.#vh + 2 * WRAP_M;
-        const hy = homes[i * 4 + 1]! * span - scrollY * PARALLAX;
+        // Placed in the flock by the first compute step (uSnap).
         pa[i * 4] = homes[i * 4]! * this.#vw;
-        pa[i * 4 + 1] = hy - Math.floor(hy / span) * span - WRAP_M;
+        pa[i * 4 + 1] = homes[i * 4 + 1]! * this.#vh;
       }
       pa[i * 4 + 3] = seed;
     }
@@ -430,14 +452,18 @@ export class Field {
     u.uDt!.value = dt;
     u.uTime!.value = this.#time;
     u.uForm!.value = this.#form.value;
-    u.uScrollDy!.value = this.#scrollDy;
-    u.uScroll!.value = this.#scrollY;
+    this.#updateFlock(dt);
+    u.uSnap!.value = this.#snapNext ? 1 : 0;
     u.uPhase!.value = playbackPhase();
     this.#updateHand(dt);
     this.#bleed += (this.#bleedTarget - this.#bleed) * (1 - Math.exp(-dt * 2.5));
     u.uBleed!.value = this.#bleed;
     this.#scrollDy = 0;
     s.gpu.compute();
+    if (this.#snapNext) {
+      this.#snapNext = false;
+      u.uSnap!.value = 0;
+    }
   }
 
   #settle(steps: number): void {
@@ -615,6 +641,37 @@ export class Field {
     }
     const spin = still ? HAND.reducedSpin : (this.#time / HAND.spinS) * 360 - 25;
     poseBones(pose, handWorld(spin, 8, this.#handM), 0, this.#bones);
+  }
+
+  #holdFlock(where: 'hero' | 'top' | 'free'): void {
+    const f = this.#flock;
+    f.hold = where;
+    // From above the screen it starts already on its way, so the screen is never empty for long.
+    f.k = where === 'free' ? 1 : where === 'top' ? 0.2 : 0;
+    this.#updateFlock(0);
+  }
+
+  #updateFlock(dt: number): void {
+    const f = this.#flock;
+    if (f.hold !== 'free') {
+      f.k = Math.min(1, f.k + dt / FLOCK.holdS);
+      if (f.k >= 1) f.hold = 'free';
+    }
+    if (f.hold === 'hero') {
+      const [x, y, w, h] = this.#shared.uTraceRect!.value as number[];
+      f.x = x! + w! * 0.5;
+      // Above the screen it waits just past the top edge, so the dots pour in from there.
+      f.y = Math.max(y! + h! * 0.5, -0.3 * this.#vh);
+    } else if (f.hold === 'top') {
+      f.x = this.#vw * 0.5;
+      f.y = -0.25 * this.#vh;
+    }
+    const lim = FLOCK.kickMax * this.#vh;
+    f.kick = Math.max(-lim, Math.min(lim, (f.kick - this.#scrollDy * FLOCK.kick) * Math.exp(-dt * FLOCK.catchUp)));
+    const u = this.#shared;
+    u.uFlockT!.value = this.#time;
+    u.uAnchor!.value = [f.x, f.y, f.k];
+    u.uKick!.value = f.kick;
   }
 
   #updateTraceRect(): void {

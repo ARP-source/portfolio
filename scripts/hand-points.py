@@ -35,6 +35,15 @@ P = (1 - r1)[:, None] * a[i] + (r1 * (1 - r2))[:, None] * b[i] + (r1 * r2)[:, No
 P -= (P.min(0) + P.max(0)) / 2
 P /= (P[:, 1].max() - P[:, 1].min()) / 2
 
+# Give the shell some body: a third of the dots sink a little below the surface, so a finger seen
+# end-on reads as a solid tip instead of a ring. Face normals point outward on average; check.
+nrm = np.cross(b[i] - a[i], c[i] - a[i])
+nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
+if (nrm * (P - P.mean(0))).sum(1).mean() < 0:
+    nrm = -nrm
+sink = rng.random(N) < 0.35
+P[sink] -= nrm[sink] * (rng.random(sink.sum()) * 0.045)[:, None]
+
 # Front-view guides (x, y): base knuckle -> tip, and the fractions where the joints sit.
 GUIDES = {
     'index': ((0.12, 0.33), (-0.05, 0.95)),
@@ -107,7 +116,7 @@ for fi, name in enumerate(FINGERS):
         dist = np.minimum(dist, np.linalg.norm(P - (a + t[:, None] * dv), axis=1))
     past = (P - J[0]) @ d0 > -BLEND
     r = 0.13 if name == 'thumb' else 0.12
-    take = past & (dist < r * 1.5) & (dist < best_d)
+    take = past & (dist < r * 2.5) & (dist < best_d)
     best_f[take] = fi
     best_d[take] = dist[take]
 
@@ -143,8 +152,53 @@ for fi, name in enumerate(FINGERS):
         beyond = s_k > -BLEND
         idx = np.where(sel)[0][beyond]
         bone_of[idx] = 1 + fi * 3 + k
-        blend[idx] = 1 - smooth((s_k[beyond] + BLEND) / (2 * BLEND))
+        # The knuckle bends furthest and its skin wraps the back of the hand, so its blend runs
+        # further along the finger; a narrow one smears the back of the knuckle into a strand.
+        lo, hi = (-BLEND, 0.12) if k == 0 and name != 'thumb' else (-BLEND, BLEND)
+        blend[idx] = 1 - smooth((s_k[beyond] - lo) / (hi - lo))
 blend = np.clip(blend, 0, 1)
+
+# Clean up: a dot whose rest-pose neighbours mostly follow another bone (web skin between two
+# fingers, the back of a knuckle) would be dragged off on its own and read as a stray strand,
+# so it takes its neighbours' majority bone. Then the parent weights are averaged over
+# same-bone neighbours so a bend stretches the skin evenly.
+from scipy.spatial import cKDTree
+nb = cKDTree(P).query(P, k=16)[1]
+for _ in range(3):
+    votes = bone_of[nb]
+    major = np.array([np.bincount(v, minlength=16).argmax() for v in votes])
+    share = (votes == major[:, None]).mean(1)
+    flip = (major != bone_of) & (share > 0.5)
+    for j in np.where(flip)[0]:
+        same = nb[j][bone_of[nb[j]] == major[j]]
+        blend[j] = blend[same].mean()
+    bone_of[flip] = major[flip]
+for _ in range(2):
+    same = bone_of[nb] == bone_of[:, None]
+    blend = (blend[nb] * same).sum(1) / same.sum(1)
+
+# Web skin between two fingers is bound to one of them, and once that finger curls it stands
+# up on its own as a thin fin. Pull every finger dot that sits well outside its finger's tube
+# (measured from the median of its own slice of the finger) back in to the tube's radius.
+for b in range(1, 16):
+    ids = np.where(bone_of == b)[0]
+    if len(ids) < 20:
+        continue
+    j0 = np.array(bones[b - 1]['joint'])
+    nxt = np.array(bones[b]['joint']) if b % 3 else None
+    ax = (nxt - j0) if nxt is not None else (P[ids].mean(0) - j0)
+    ax /= np.linalg.norm(ax)
+    t = (P[ids] - j0) @ ax
+    edges = np.quantile(t, np.linspace(0, 1, 7))
+    for lo_t, hi_t in zip(edges[:-1], edges[1:]):
+        sl = ids[(t >= lo_t) & (t <= hi_t)]
+        c = np.median(P[sl], axis=0)
+        off = P[sl] - c
+        off -= np.outer(off @ ax, ax)
+        rad = np.linalg.norm(off, axis=1)
+        cap = np.median(rad) * 1.2
+        far = rad > cap
+        P[sl[far]] -= off[far] * (1 - cap / rad[far])[:, None]
 
 scale = np.abs(P).max()
 q = np.clip(np.round(P / scale * 32767), -32767, 32767).astype('<i2')

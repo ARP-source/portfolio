@@ -1,28 +1,34 @@
 /**
- * Re-forming the hero after the visitor scrolls back up, along routes Raag drew: the trace's
- * swarm rises up the left side, loops over the top and back with a small spin, then draws the
- * line from left to right; the hand's swarm rises up the right side and twirls down, then
- * twirls back up as the hand takes shape. The shader (reformChunk in shaders.ts) does the motion;
- * this file holds the timing and the trace route.
+ * Re-forming the hero after the visitor scrolls back up. The flock streams out of itself along the
+ * route Raag drew: up the left side, over the top, a small spin, and back down to the line's left
+ * end, where the trace draws itself from left to right like a pen. The hand's dots ride the same
+ * stream and peel off over the hand, twirling down around it and back up as it takes shape. The
+ * shader (reformChunk in shaders.ts) does the motion; this file holds the timing and the route.
  */
 
 /** Seconds. Every particle has finished by REFORM.totalS. */
 export const REFORM = {
-  /** Both swarms first gather where their route starts (bottom left, bottom right). */
-  gatherS: 0.6,
-  /** Trace: time for one particle to travel the route, the spread between first and last along it
-   *  (short, so the loop and spin read as a band), and the time to run the whole line. The particle
-   *  bound for the right end leads and nobody overtakes; the left end settles first. */
+  /** Dots leave the flock over this window, so it stretches into a stream instead of jumping. */
+  leaveS: 0.6,
+  /** Trace: time from the flock to the line, the spread between first and last arrival (short, so
+   *  the loop and spin read as a band), and the time to run the whole line. The dot bound for the
+   *  right end arrives first and nobody overtakes; the left end settles last. */
   traceRouteS: 2.5,
   traceSpreadS: 0.5,
   traceRunS: 1.0,
-  /** Hand: route (rise and twirl down), spread along it, and the climb: everyone climbs together
-   *  at one speed and drops out at its own height, so the hand fills in from the wrist up. */
-  handRouteS: 2.2,
+  /** Hand: how far along the route its dots peel off (0..1), the turn toward the hand, the twirl
+   *  down around it, and the climb: everyone climbs together and drops out at its own height, so
+   *  the hand fills in from the wrist up. */
+  handBranch: 0.45,
+  handTurnS: 0.35,
+  handDescendS: 1.0,
   handSpreadS: 0.2,
   handClimbS: 0.9,
   get totalS() {
-    return this.gatherS + Math.max(this.traceRouteS + Math.max(this.traceSpreadS + 0.15, this.traceRunS), this.handRouteS + this.handSpreadS + this.handClimbS);
+    const trace = this.leaveS + this.traceRouteS + Math.max(this.traceSpreadS + 0.15, this.traceRunS);
+    const hand = this.leaveS + this.traceSpreadS + this.handBranch * (this.traceRouteS + this.traceSpreadS) +
+      this.handTurnS + this.handDescendS + this.handSpreadS + this.handClimbS;
+    return Math.max(trace, hand);
   },
 };
 

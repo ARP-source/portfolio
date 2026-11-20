@@ -85,31 +85,70 @@ for fi, name in enumerate(FINGERS):
         bones.append({'joint': J[k].round(4).tolist(), 'axis': axis.round(4).tolist(), 'spread': n.round(4).tolist()})
         seg.append((1 + fi * 3 + k, J[k], J[k + 1], 0.12 if name == 'thumb' else 0.1))
 
-def seg_dist(p, p0, p1):
-    d = p1 - p0
-    t = np.clip(((p - p0) @ d) / (d @ d), 0, 1)
-    return np.linalg.norm(p - (p0 + t[:, None] * d), axis=1), t
+# Skinning. Each finger's knuckle joint is pushed back toward the wrist (the sculpt's finger
+# skin starts below the visible knuckle), then every point near a finger is bound to the last
+# joint it lies beyond along the finger, blending smoothly with the bone before it over +-0.05
+# around each joint, so bends stretch the surface instead of tearing it or leaving stubs.
+KNUCKLE_BACK = 0.1
+BLEND = 0.05
+best_f = np.full(N, -1)
+best_d = np.full(N, 9.0)
+for fi, name in enumerate(FINGERS):
+    J = joints[name].copy()
+    d0 = (J[1] - J[0]) / np.linalg.norm(J[1] - J[0])
+    J[0] = J[0] - d0 * KNUCKLE_BACK
+    joints[name] = J
+    # Distance to the finger's polyline, counting only points past the moved knuckle.
+    dist = np.full(N, 9.0)
+    for k in range(3):
+        a, b = J[k], J[k + 1]
+        dv = b - a
+        t = np.clip(((P - a) @ dv) / (dv @ dv), 0, 1)
+        dist = np.minimum(dist, np.linalg.norm(P - (a + t[:, None] * dv), axis=1))
+    past = (P - J[0]) @ d0 > -BLEND
+    r = 0.13 if name == 'thumb' else 0.12
+    take = past & (dist < r * 1.5) & (dist < best_d)
+    best_f[take] = fi
+    best_d[take] = dist[take]
 
-D = np.full((N, len(seg)), 9.0)
-TT = np.zeros((N, len(seg)))
-for s, (bone, p0, p1, r) in enumerate(seg):
-    D[:, s], TT[:, s] = seg_dist(P, p0, p1)
-best = D.argmin(1)
-dmin = D[np.arange(N), best]
-tbest = TT[np.arange(N), best]
-bone_of = np.array([seg[s][0] for s in best])
-# Points far from every finger axis belong to the palm; the first bit of each proximal
-# segment also stays with the palm, so knuckles don't tear away from it.
-radius = np.array([seg[s][3] for s in best]) * 1.6
-palm = (dmin > radius) | ((bone_of - 1) % 3 == 0) & (tbest < 0.02)
-bone_of[palm] = 0
-seg_len = np.array([np.linalg.norm(seg[s][2] - seg[s][1]) for s in best])
-along = tbest * seg_len
-blend = np.where(palm, 0.0, np.clip(0.5 - along / 0.08, 0.0, 0.5))
+# Rebuild bone records with the moved knuckles.
+bones = []
+for fi, name in enumerate(FINGERS):
+    J = joints[name]
+    for k in range(3):
+        d = J[k + 1] - J[k]
+        d /= np.linalg.norm(d)
+        if name == 'thumb':
+            towards = palm_centre - J[k]
+            towards -= d * (towards @ d)
+            n = towards / np.linalg.norm(towards)
+        else:
+            n = normal
+        axis = np.cross(d, n)
+        axis /= np.linalg.norm(axis)
+        bones.append({'joint': J[k].round(4).tolist(), 'axis': axis.round(4).tolist(), 'spread': n.round(4).tolist()})
+
+def smooth(x):
+    x = np.clip(x, 0, 1)
+    return x * x * (3 - 2 * x)
+
+bone_of = np.zeros(N, int)
+blend = np.zeros(N)
+for fi, name in enumerate(FINGERS):
+    J = joints[name]
+    sel = best_f == fi
+    for k in range(3):
+        dk = (J[k + 1] - J[k]) / np.linalg.norm(J[k + 1] - J[k])
+        s_k = (P[sel] - J[k]) @ dk
+        beyond = s_k > -BLEND
+        idx = np.where(sel)[0][beyond]
+        bone_of[idx] = 1 + fi * 3 + k
+        blend[idx] = 1 - smooth((s_k[beyond] + BLEND) / (2 * BLEND))
+blend = np.clip(blend, 0, 1)
 
 scale = np.abs(P).max()
 q = np.clip(np.round(P / scale * 32767), -32767, 32767).astype('<i2')
-w = (bone_of * 256 + np.round(blend * 255)).astype('<i2')
+w = (bone_of * 256 + np.round(blend * 255)).astype('<i2')  # blend = parent weight
 with open('public/hand.bin', 'wb') as out:
     out.write(np.array([scale], '<f4').tobytes())
     out.write(np.concatenate([q, w[:, None]], axis=1).astype('<i2').tobytes())

@@ -272,10 +272,10 @@ void main(){
   // Recruitment by darkness: resting dots are tissue, joining the trace stains them ink,
   // and spikes in the recording (or the visitor's pointer) push them darker still.
   float recruit=clamp(max(vRecruit,vAct),0.0,1.0);
-  vec3 rest=mix(uTissue,uInkDim,0.3+0.35*vRank*vRank);
+  vec3 rest=mix(uTissue,uInkDim,0.6+0.4*vRank*vRank);
   vec3 col=mix(rest,uInk,recruit);
   col=mix(col,uDrift,uBleed*recruit);
-  float a=mix(mix(0.75,0.95,vRank), mix(0.8,0.95,vAct), recruit);
+  float a=mix(mix(0.85,1.0,vRank), mix(0.8,0.95,vAct), recruit);
   // Far side of the hand is paler, so it reads as a solid turning in space.
   a*=clamp(0.78+0.45*vDepth,0.4,1.0);
 

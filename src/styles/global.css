@@ -153,3 +153,12 @@ canvas.field {
 body > header, body > main, body > footer { position: relative; z-index: 1; }
 .hero-trace path.trace { transition: opacity var(--dur-ui) var(--ease-spring); }
 html[data-field='on'] .hero-trace path.trace { opacity: 0; }
+/* Mask mode "halo": text carries a soft dark halo, so particles can pass close behind it. */
+html[data-field='on'][data-mask='halo'] :is(main, header, footer) :is(h1, h2, h3, p, li, dt, dd, th, td, figcaption, a) {
+  text-shadow: 0 0 6px var(--bg), 0 0 16px var(--bg), 0 0 28px var(--bg);
+}
+
+/* Sections are separated by space and one quiet rule, not labels. */
+.section { padding-top: 5rem; }
+.section > h2 { margin-bottom: 1.25rem; }
+hr.rule { border: 0; border-top: 1px solid var(--olive-deep); margin: 0 0 2rem; }

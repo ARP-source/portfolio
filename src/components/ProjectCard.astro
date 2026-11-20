@@ -3,40 +3,36 @@ import type { CollectionEntry } from 'astro:content';
 import KeyMetric from './KeyMetric.astro';
 import Sparkline from './Sparkline.astro';
 interface Props { project: CollectionEntry<'projects'>; index: number }
-const { project, index } = Astro.props;
+const { project } = Astro.props;
 const p = project.data;
-const statusLabel = { shipped: 'shipped', 'in-progress': 'in progress', prototype: 'prototype' }[p.status];
+const statusLabel = { shipped: 'Shipped', 'in-progress': 'In progress', prototype: 'Prototype' }[p.status];
+// Dates may still carry a TODO for Raag; show only the finished part on the card.
+const when = p.dates.split('·')[0]!.trim();
+const stack = p.stack.slice(0, 5);
 ---
 
 <article class="card" aria-labelledby={`card-${project.id}`}>
-  <p class="meta head">
-    <span>{String(index + 1).padStart(2, '0')}</span>
-    <span class={`status status--${p.status}`}>{statusLabel}</span>
-  </p>
   <h3 id={`card-${project.id}`}><a href={`/work/${project.id}`}>{p.title}</a></h3>
+  <p class="meta head"><span class={`status status--${p.status}`}>{statusLabel}</span> · {when}</p>
   <p class="one">{p.oneLiner}</p>
   <div class="signal-row" data-thread-target={project.id}>
     {p.sparkline && <Sparkline slug={project.id} {...p.sparkline} />}
     {p.keyMetric && <KeyMetric metric={p.keyMetric} />}
-    {
-      !p.keyMetric && !p.sparkline && (
-        <p class="meta">No headline number yet: see the notebook page for what is and isn't measured.</p>
-      )
-    }
   </div>
-  <p class="meta stack">{p.stack.join(' · ')}</p>
+  <p class="meta stack">{stack.join(', ')}</p>
 </article>
 
 <style>
-  .card { padding-block: 2rem; border-top: 1px solid var(--olive-deep); display: grid; gap: 0.75rem; }
-  .head { display: flex; gap: 1rem; margin: 0; }
+  .card { padding-block: 1.75rem; border-top: 1px solid var(--olive-deep); display: grid; gap: 0.5rem; }
+  .head { margin: 0; }
   .status--in-progress { color: var(--olive-bright); }
   .status--shipped { color: var(--bronze); }
   h3 { font-size: clamp(1.6rem, 1.3rem + 1vw, 2.1rem); }
   h3 a { color: var(--bone); text-decoration: none; }
   h3 a:hover { color: var(--bronze-bright); }
-  h3 a::after { content: ' →'; color: var(--bronze); font-family: var(--font-mono); font-size: 0.6em; }
-  .one { max-width: 38rem; color: var(--bone-dim); margin: 0; }
+  h3 a { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 0.18em; text-decoration-thickness: 1px; transition: text-decoration-color var(--dur-ui) var(--ease-spring); }
+  h3 a:hover { text-decoration-color: var(--bronze); }
+  .one { max-width: 40rem; color: var(--bone-dim); margin: 0.25rem 0 0; }
   .signal-row { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; align-items: flex-end; margin-top: 0.5rem; }
   .stack { margin: 0; }
 </style>

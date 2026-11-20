@@ -1,5 +1,6 @@
 ---
 // One page body, three orderings: /, /neuro and /swe share every component and every word except the intro.
+// Projects come straight after the hero: it's what someone hiring looks for first.
 import Hero from './Hero.astro';
 import Demo from './Demo.astro';
 import WorkList from './WorkList.astro';
@@ -11,6 +12,7 @@ const { view } = Astro.props;
 ---
 
 <Hero intro={intros[view]} />
-{view === 'swe' ? <><WorkList order={view} /><Demo /></> : <><Demo /><WorkList order={view} /></>}
+<WorkList order={view} />
+<Demo />
 <About />
 <Contact />

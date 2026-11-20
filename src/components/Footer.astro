@@ -14,11 +14,10 @@ type LighthouseResult = {
   field?: { url: string; mobile: Scores; desktop: Scores };
 };
 const lh = Object.values(found)[0]?.default;
-const year = new Date().getFullYear();
 ---
 
 <footer class="site-footer wrap">
-  <div class="graticule meta"><span>end of signal</span><span>{year}</span></div>
+  <hr class="rule" />
   <div class="cols meta">
     <ul class="plain">
       <li>{site.name}</li>

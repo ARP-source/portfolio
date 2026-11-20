@@ -5,7 +5,7 @@ const done = items.filter((i) => i.done).length;
 ---
 
 <aside class="investigating" aria-labelledby="inv-title">
-  <p class="meta" id="inv-title">currently investigating · {done}/{items.length} done</p>
+  <p class="meta" id="inv-title">Open questions ({done} of {items.length} answered)</p>
   <ul class="mono">
     {
       items.map((i) => (

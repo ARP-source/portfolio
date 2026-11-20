@@ -44,9 +44,10 @@ uniform float uDt;
 uniform float uForm;        // 0 swarm .. 1 trace, already spring-eased on the CPU
 uniform vec2 uViewport;     // CSS px
 uniform vec4 uTraceRect;    // x, y, w, h of the hero SVG in CSS px
-uniform float uPhase;       // scroll-driven offset along the recording
+uniform float uPhase;       // playback position along the recording, in trace lengths (period 2: ping-pong)
 uniform vec3 uPointer;      // x, y, strength
 uniform float uScrollDy;    // px scrolled since last step
+uniform float uScroll;      // total scrollY, for the swarm's parallax homes
 uniform sampler2D uHome;    // xy swarm home (0..1), z size rank, w trace u
 uniform sampler2D uTrace;   // N x 1, r = sample in [-1, 1]
 uniform float uTraceN;
@@ -57,9 +58,17 @@ float traceAt(float u){
   float b=texelFetch(uTrace,ivec2(int(min(i+1.0,uTraceN-1.0)),0),0).r;
   return mix(a,b,x-i);
 }
+// Swarm homes scroll with the page at 30 % (parallax) and wrap in a band slightly taller than the viewport.
+const float WRAP_M=40.0;
+vec2 swarmHome(vec4 h){
+  float span=uViewport.y+2.0*WRAP_M;
+  float y=mod(h.y*span-uScroll*0.3,span)-WRAP_M;
+  return vec2(h.x*uViewport.x,y);
+}
 vec2 traceTarget(vec4 h, float seed, out float s){
   float u=h.w;
-  s=traceAt(clamp(fract(u+uPhase),0.0,1.0));
+  // Ping-pong through the recording (forward, then back) so playback loops without a seam.
+  s=traceAt(1.0-abs(1.0-2.0*fract((u+uPhase)*0.5)));
   float y=uTraceRect.y+uTraceRect.w*0.5-s*uTraceRect.w*0.44;
   // A line a few px thick, not a single row of points.
   y+=(seed-0.5)*2.4;
@@ -78,7 +87,7 @@ void main(){
   // Swarm: each particle has a home that wanders slowly on a noise field; the particle is
   // steered toward it with a little curl flow on top. Steering, not forcing, keeps it calm,
   // and a capped speed means leaving the trace is a quick spread, not a jump.
-  vec2 home=H.xy*uViewport;
+  vec2 home=swarmHome(H);
   float tt=uTime*0.04;
   home+=vec2(snoise(vec3(H.xy*3.0,tt)),snoise(vec3(H.xy*3.0+17.0,tt)))*70.0;
   vec2 flow=curl2(vec3(pos/260.0,tt+seed*0.15));
@@ -110,10 +119,22 @@ export const positionShader = /* glsl */ `
 ${common}
 void main(){
   vec2 uv=gl_FragCoord.xy/resolution.xy;
-  vec4 P=texture2D(texPos,uv); vec4 V=texture2D(texVel,uv);
+  vec4 P=texture2D(texPos,uv); vec4 V=texture2D(texVel,uv); vec4 H=texture2D(uHome,uv);
   vec2 pos=P.xy+V.xy*uDt;
-  // Swarm particles drift a little with the page (parallax), the trace follows its rect directly.
-  pos.y-=uScrollDy*0.25*(1.0-uForm);
+  // Swarm particles move rigidly with their parallax homes, so scrolling never stretches them.
+  pos.y-=uScrollDy*0.3*(1.0-uForm);
+  if(uForm<0.5){
+    float span=uViewport.y+2.0*WRAP_M;
+    float hy=swarmHome(H).y;
+    if(pos.y-hy>0.5*span) pos.y-=span;
+    else if(hy-pos.y>0.5*span) pos.y+=span;
+  }
+  // Once the trace formation has settled, lock particles to the line: no spring lag while it plays.
+  float lock=smoothstep(0.85,1.0,uForm);
+  if(lock>0.0){
+    float s; vec2 target=traceTarget(H,P.w,s);
+    pos=mix(pos,target,lock);
+  }
   gl_FragColor=vec4(pos,P.z,P.w);
 }
 `;
@@ -143,6 +164,7 @@ uniform vec3 uBronze;
 uniform vec3 uBone;
 uniform sampler2D uMask;   // 1 where text sits, blurred
 uniform float uFade;       // global fade-in, 0..1
+uniform float uMaskStrength;
 varying float vAct;
 varying vec2 vScreen;
 varying float vRank;
@@ -154,7 +176,7 @@ void main(){
   col=mix(col,uBone,smoothstep(0.09,0.0,r2)*0.25*(0.4+vAct));
   float edge=smoothstep(0.25,0.12,r2);
   float mask=texture2D(uMask,vec2(vScreen.x,1.0-vScreen.y)).r;
-  float a=edge*mix(0.5,0.9,vRank)*(1.0-0.85*mask)*uFade;
+  float a=edge*mix(0.5,0.9,vRank)*(1.0-uMaskStrength*mask)*uFade;
   gl_FragColor=vec4(col,a);
 }
 `;

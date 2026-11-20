@@ -3,13 +3,13 @@
 // replayed EMG, the in-browser LDA and the guided sequence. Without JS this is what everyone sees.
 ---
 
-<section id="demo" class="wrap" aria-labelledby="demo-title" data-section="demo">
-  <div class="graticule meta"><span>signature demo</span><span>replayed EMG · LDA in the browser</span></div>
-  <h2 id="demo-title">Hold to contract</h2>
+<section id="demo" class="wrap section" aria-labelledby="demo-title" data-section="demo">
+  <h2 id="demo-title">Why drift matters</h2>
   <div class="col">
     <p>
-      A myoelectric classifier trained on day 1 meets the same person's muscles on day 29, after the electrodes have been
-      taken off and put back on. It gets worse, for real. Then you recalibrate it with three holds, and it recovers.
+      Train a gesture classifier on someone's forearm EMG on day 1. Take the electrodes off, put them back on four weeks
+      later, and the same model gets noticeably worse. A few seconds of new samples brings most of it back. This section
+      will let you try that yourself on recorded data.
     </p>
     <ol class="steps">
       <li><strong>Pick a gesture.</strong> <span class="meta">Hand Close · Hand Open · Thumb–Index Opposition · Index Finger Extension</span></li>
@@ -19,8 +19,8 @@
     </ol>
     <p class="todo">TODO(phase 4): the interactive version and the population results across all 43 participants.</p>
     <p class="meta honesty">
-      Replayed public data: GRABMyo, day 1 vs day 29. Classifier: LDA on time-domain features, running in your browser.
-      Not MyoCopilot's production model.
+      Uses recorded public data (GRABMyo, day 1 and day 29) and a simple LDA classifier that runs in your browser.
+      It isn't MyoCopilot's model.
     </p>
     <p class="meta cite">
       Data: Jiang, N., Pradhan, A., &amp; He, J. (2024). Gesture Recognition and Biometrics ElectroMyogram (GRABMyo)
@@ -29,8 +29,8 @@
       and biometrics. Sci Data 9, 733 (2022). <a href="https://doi.org/10.1038/s41597-022-01836-y">doi:10.1038/s41597-022-01836-y</a>.
     </p>
     <p class="meta">
-      This is the idea behind <a href="/work/myocopilot">MyoCopilot</a> and
-      <a href="/work/edge-decoder-drift">edge-decoder-drift</a>.
+      Same problem, two projects: <a href="/work/myocopilot">MyoCopilot</a> (EMG) and
+      <a href="/work/edge-decoder-drift">edge-decoder-drift</a> (intracortical BCI).
     </p>
   </div>
 </section>

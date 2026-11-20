@@ -12,9 +12,7 @@ const projects = orderings[order].map((id) => byId.get(id)!);
 ---
 
 <section id="work" class="wrap" aria-labelledby="work-title" data-section="work">
-  <div class="graticule meta"><span>selected work</span><span>{projects.length} projects</span></div>
-  <h2 id="work-title">Selected work</h2>
-  <p class="meta lead">Every number names its source file. Prototypes are labelled as prototypes.</p>
+  <h2 id="work-title">Projects</h2>
   <div class="list">
     {projects.map((project, i) => <ProjectCard project={project} index={i} />)}
   </div>
@@ -22,5 +20,6 @@ const projects = orderings[order].map((id) => byId.get(id)!);
 </section>
 
 <style>
-  .lead { margin: 0.75rem 0 2rem; }
+  #work { padding-top: 5rem; }
+  h2 { margin-bottom: 1.5rem; }
 </style>

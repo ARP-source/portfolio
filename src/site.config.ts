@@ -23,8 +23,9 @@ export const orderings: Record<'home' | Audience, string[]> = {
 };
 
 export const intros: Record<'home' | Audience, string> = {
-  home: 'Myoelectric control, neural decoders on the edge, and the software that keeps them honest.',
+  home:
+    "Right now I'm compressing an intracortical BCI decoder to run on a Jetson Orin Nano and testing whether it can still recalibrate once the signal drifts. I also built MyoCopilot, a myoelectric controller that asks for a few fresh samples when the EMG starts to drift.",
   neuro:
-    'For neurotech and prosthetics teams: I work on what happens to decoders after the lab, when electrodes shift and signals drift.',
-  swe: 'For software teams: I build systems that measure themselves, and I delete parts that fail validation.',
+    'Most of my work is about what happens to a decoder after the lab: electrodes get re-seated, the signal shifts between sessions, and accuracy drops without anyone noticing.',
+  swe: 'On the software side I build things that check their own output. Downshift starts on the cheapest model and only escalates when an answer fails a check. Warden attacks an AI agent’s tool permissions, patches what it finds, and re-runs normal behaviour to prove nothing broke.',
 };

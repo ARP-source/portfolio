@@ -36,9 +36,10 @@ Rules the code keeps: text is always HTML, never particles; colour means state (
 
 ## The field
 
-- Formations so far: `swarm` (idle drift on a curl-noise flow, each particle steered toward a slowly wandering home) and `trace` (critically damped springs onto the same GRABMyo recording the SVG hero draws; scrolling advances it). The hero section switches between them through the bus.
+- Formations so far: `swarm` (idle drift on a curl-noise flow, each particle steered toward a slowly wandering home) and `trace` (particles spring onto the same GRABMyo recording the SVG hero draws, then lock to it while it plays). The hero section switches between them through the bus.
 - Particles start on whatever formation the page shows, so nothing animates on load. They only move fast in response to the visitor: pointer (140 px push), scroll, section changes.
-- Particles fade near text: a 1/8-resolution mask of text boxes, blurred, multiplies their alpha.
+- Particles near text: by default (`halo`) text carries a soft dark halo and particles fade a little around each rendered line, so they pass behind the words instead of leaving empty boxes. `?mask=line` (stronger fade per line) and `?mask=box` (v1, padded element boxes) are kept for comparison.
+- The hero trace plays: the recording runs forward then backward on a 36 s loop (`tracePlayback` in `tokens.ts`). The static SVG and the particles share that clock, so the hand-off between them doesn't jump.
 - Tiers: no hardware WebGL2 or float targets, or a software renderer, gives the static SVG. Phones start and stay at mid (76² = 5,776). Desktop starts at mid and a 1 s fps probe promotes it to high (128² = 16,384) at 57 fps or more; under 30 fps it steps down once, then gives up to the static SVG. DPR is capped at 1.5 (mid) or 2 (high).
 - `prefers-reduced-motion`: no animation loop. The field is placed on its formation and drawn once, and redrawn when you scroll or resize.
 - Hidden tab: the loop stops. `pagehide`: every GPU resource is disposed.

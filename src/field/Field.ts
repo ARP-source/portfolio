@@ -19,7 +19,7 @@ import {
 } from 'three';
 import { GPUComputationRenderer, type Variable } from 'three/examples/jsm/misc/GPUComputationRenderer.js';
 import { bus, type Formation, type Tier } from '../scripts/bus';
-import { durations, palette, springAt } from '../tokens/tokens';
+import { durations, palette, springAt, tracePlayback } from '../tokens/tokens';
 import { TIER_SIZE } from './tiers';
 import { pointsFragment, pointsVertex, positionShader, velocityShader } from './shaders';
 import trace from '../data/hero-trace.json';
@@ -27,6 +27,19 @@ import trace from '../data/hero-trace.json';
 /** Formations implemented in v1. The rest of the contract arrives in later phases. */
 const FORM_VALUE: Partial<Record<Formation, number>> = { swarm: 0, trace: 1 };
 const MASK_SCALE = 1 / 8;
+/**
+ * How particles meet text (?mask= to compare):
+ * box  - fade inside padded element boxes (v1)
+ * line - fade around each rendered line of text, softly
+ * halo - a weak line fade plus a dark halo on the text itself (CSS), so particles pass behind
+ */
+type MaskMode = 'box' | 'line' | 'halo';
+const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number; lines: boolean }> = {
+  box: { strength: 0.85, pad: 10, blur: 2, lines: false },
+  line: { strength: 0.9, pad: 6, blur: 3, lines: true },
+  halo: { strength: 0.55, pad: 4, blur: 3, lines: true },
+};
+const PARALLAX = 0.3, WRAP_M = 40;
 const TEXT_SELECTOR =
   'main h1, main h2, main h3, main p, main li, main dt, main dd, main th, main td, main figcaption, main a, main .meta, header a, footer a, footer p';
 
@@ -116,6 +129,8 @@ export class Field {
       uPhase: { value: 0 },
       uPointer: { value: [-1e4, -1e4, 0] },
       uScrollDy: { value: 0 },
+      uScroll: { value: scrollY },
+      uMaskStrength: { value: MASK_MODES[maskMode()].strength },
       uTrace: { value: this.#traceTex },
       uTraceN: { value: pts.length },
       uPixelRatio: { value: 1 },
@@ -126,6 +141,7 @@ export class Field {
       uFade: { value: 0 },
     };
 
+    document.documentElement.dataset.mask = maskMode();
     performance.mark('field:renderer');
   }
 
@@ -223,6 +239,7 @@ export class Field {
     const p0 = gpu.createTexture();
     const v0 = gpu.createTexture();
     const pa = p0.image.data as Float32Array;
+    this.#shared.uPhase!.value = playbackPhase();
     this.#updateTraceRect();
     const [rx, ry, rw, rh] = this.#shared.uTraceRect!.value as number[];
     const onTrace = this.#form.value > 0.5;
@@ -232,14 +249,17 @@ export class Field {
       if (onTrace) {
         // Same target as traceTarget() in the shader, evaluated once on the CPU.
         const u = homes[i * 4 + 3]!;
-        const x = (u + (this.#shared.uPhase!.value as number)) % 1 * last;
+        const v = (u + (this.#shared.uPhase!.value as number)) * 0.5;
+        const x = (1 - Math.abs(1 - 2 * (v - Math.floor(v)))) * last;
         const k = Math.floor(x), f = x - k;
         const sv = pts[k]! * (1 - f) + pts[Math.min(k + 1, last)]! * f;
         pa[i * 4] = rx! + u * rw!;
         pa[i * 4 + 1] = ry! + rh! * 0.5 - sv * rh! * 0.44 + (seed - 0.5) * 2.4;
       } else {
+        const span = this.#vh + 2 * WRAP_M;
+        const hy = homes[i * 4 + 1]! * span - scrollY * PARALLAX;
         pa[i * 4] = homes[i * 4]! * this.#vw;
-        pa[i * 4 + 1] = homes[i * 4 + 1]! * this.#vh;
+        pa[i * 4 + 1] = hy - Math.floor(hy / span) * span - WRAP_M;
       }
       pa[i * 4 + 3] = seed;
     }
@@ -294,6 +314,8 @@ export class Field {
     u.uTime!.value = this.#time;
     u.uForm!.value = this.#form.value;
     u.uScrollDy!.value = this.#scrollDy;
+    u.uScroll!.value = this.#scrollY;
+    u.uPhase!.value = playbackPhase();
     this.#scrollDy = 0;
     s.gpu.compute();
   }
@@ -423,13 +445,22 @@ export class Field {
   /** Text rects in document coordinates; re-read on resize and when layout changes. */
   #measureText(): void {
     const sx = scrollX, sy = scrollY;
-    this.#mask.rects = [...document.querySelectorAll<HTMLElement>(TEXT_SELECTOR)]
-      .filter((el) => !el.closest('.hero-trace svg'))
-      .map((el) => {
-        const r = el.getBoundingClientRect();
-        return new DOMRect(r.x + sx, r.y + sy, r.width, r.height);
-      })
-      .filter((r) => r.width > 0 && r.height > 0);
+    const lines = MASK_MODES[maskMode()].lines;
+    const range = document.createRange();
+    const rects: DOMRect[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>(TEXT_SELECTOR)) {
+      if (el.closest('.hero-trace svg')) continue;
+      let list: ArrayLike<DOMRect>;
+      if (lines) {
+        // One rect per rendered line of text, so the fade follows the words, not the block.
+        range.selectNodeContents(el);
+        list = range.getClientRects();
+      } else list = [el.getBoundingClientRect()];
+      for (const r of Array.from(list)) {
+        if (r.width > 0 && r.height > 0) rects.push(new DOMRect(r.x + sx, r.y + sy, r.width, r.height));
+      }
+    }
+    this.#mask.rects = rects;
     this.#mask.dirty = true;
   }
 
@@ -437,9 +468,10 @@ export class Field {
     const { ctx, canvas, rects, tex } = this.#mask;
     const sy = scrollY, sx = scrollX;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.filter = 'blur(2px)';
+    const mode = MASK_MODES[maskMode()];
+    ctx.filter = `blur(${mode.blur}px)`;
     ctx.fillStyle = '#fff';
-    const pad = 10;
+    const pad = mode.pad;
     for (const r of rects) {
       const y = r.y - sy;
       if (y + r.height < -pad || y > this.#vh + pad) continue;
@@ -482,8 +514,6 @@ export class Field {
       this.#scrollDy += y - this.#scrollY;
       this.#scrollY = y;
       this.#mask.dirty = true;
-      // The recording advances as the visitor scrolls, never on its own.
-      this.#shared.uPhase!.value = (y * 0.0006) % 1;
       stillUpdate();
     });
     on('pointermove', (e) => {
@@ -518,4 +548,21 @@ export class Field {
       }),
     );
   }
+}
+
+function maskMode(): MaskMode {
+  const m = new URLSearchParams(location.search).get('mask');
+  return m === 'box' || m === 'line' || m === 'halo' ? m : DEFAULT_MASK;
+}
+export const DEFAULT_MASK: MaskMode = 'halo';
+
+/**
+ * Playback position in trace lengths. Reads the static SVG's CSS animation clock when it exists,
+ * so the particles pick up the line exactly where the SVG left it.
+ */
+function playbackPhase(): number {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
+  const anim = document.querySelector('.hero-trace .tape')?.getAnimations()[0];
+  const ms = typeof anim?.currentTime === 'number' ? anim.currentTime : performance.now();
+  return (2 * (ms / 1000)) / tracePlayback.periodS;
 }

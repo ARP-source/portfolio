@@ -23,6 +23,12 @@ export const palette = {
 export const spring = { omega: 9 } as const;
 export const springAt = (t: number, w = spring.omega) => 1 - (1 + w * t) * Math.exp(-w * t);
 
+/**
+ * Hero trace playback: the recording plays forward then backward (a seamless loop),
+ * one full loop per periodS. The static SVG (CSS) and the particle trace (shader) share it.
+ */
+export const tracePlayback = { periodS: 36 } as const;
+
 export const durations = {
   ui: 260, // UI transitions, 200-350 ms
   uiFast: 200,
@@ -47,5 +53,5 @@ export function tokensCss(): string {
   const colours = Object.entries(palette)
     .map(([k, v]) => `--${kebab(k)}:${v}`)
     .join(';');
-  return `:root{${colours};--ease-spring:${springLinear()};--dur-ui:${durations.ui}ms;--dur-ui-fast:${durations.uiFast}ms;--dur-morph:${durations.morph}ms}`;
+  return `:root{${colours};--ease-spring:${springLinear()};--dur-ui:${durations.ui}ms;--dur-ui-fast:${durations.uiFast}ms;--dur-morph:${durations.morph}ms;--trace-period:${tracePlayback.periodS}s}`;
 }

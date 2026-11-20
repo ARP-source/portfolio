@@ -1,31 +1,15 @@
 ---
 import { site } from '../site.config';
-const path = Astro.url.pathname.replace(/\/$/, '') || '/';
-const views = [
-  { href: '/', label: 'all' },
-  { href: '/neuro', label: 'neuro' },
-  { href: '/swe', label: 'swe' },
-];
 ---
 
 <header class="site-header wrap">
-  <a class="mark mono" href="/">AP<span class="dim">/signal</span><span class="sr-only">: {site.name}, home</span></a>
+  <a class="mark" href="/">{site.name}</a>
   <nav aria-label="Primary">
     <ul class="mono">
-      <li><a href="/#work">work</a></li>
-      <li><a href="/#about">about</a></li>
-      <li><a href="/#contact">contact</a></li>
-    </ul>
-    <ul class="mono views" aria-label="Views">
-      {
-        views.map((v) => (
-          <li>
-            <a href={v.href} aria-current={path === v.href ? 'page' : undefined}>
-              {v.label}
-            </a>
-          </li>
-        ))
-      }
+      <li><a href="/#work">Projects</a></li>
+      <li><a href="/#about">About</a></li>
+      <li><a href="/#contact">Contact</a></li>
+      <li><a href={site.github}>GitHub</a></li>
     </ul>
   </nav>
 </header>
@@ -40,13 +24,11 @@ const views = [
     padding-block: 1.5rem;
     font-size: 0.8rem;
   }
-  .mark { color: var(--bone); text-decoration: none; letter-spacing: 0.04em; }
+  .mark { color: var(--bone); text-decoration: none; font-family: var(--font-display); font-size: 1.05rem; font-weight: 560; }
   nav { display: flex; gap: 2rem; flex-wrap: wrap; }
   ul { display: flex; gap: 1.25rem; list-style: none; margin: 0; padding: 0; }
   li { margin: 0; }
   nav a, .mark { display: inline-block; padding-block: 0.4rem; }
   nav a { color: var(--bone-dim); text-decoration: none; }
   nav a:hover { color: var(--bone); }
-  .views { border-left: 1px solid var(--olive-deep); padding-left: 1.25rem; }
-  .views a[aria-current='page'] { color: var(--bronze); }
 </style>

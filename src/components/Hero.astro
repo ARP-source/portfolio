@@ -6,19 +6,16 @@ const { intro } = Astro.props;
 ---
 
 <section class="hero wrap" aria-labelledby="hero-title" data-section="hero">
-  <p class="meta">{site.role} · neurotech and software</p>
   <h1 id="hero-title">{site.name}</h1>
+  <p class="meta role">{site.role}</p>
   <p class="thesis">{site.thesis}</p>
   <p class="intro col dim">{intro}</p>
   <HeroTrace />
-  <p class="next meta">
-    <a href="#demo">Hold to contract: a classifier that drifts and recovers, in your browser ↓</a>
-  </p>
 </section>
 
 <style>
   .hero { padding-block: clamp(3rem, 2rem + 6vw, 7rem) 3rem; }
-  h1 { margin-top: 1rem; }
+  .role { margin: 0.75rem 0 0; }
   .thesis {
     font-size: clamp(1.6rem, 1.1rem + 2.2vw, 2.6rem);
     line-height: 1.15;
@@ -29,5 +26,4 @@ const { intro } = Astro.props;
     margin: 1rem 0 1.75rem;
   }
   .intro { margin-bottom: 3rem; }
-  .next { margin-top: 2.5rem; }
 </style>

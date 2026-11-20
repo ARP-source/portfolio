@@ -6,7 +6,7 @@
 import { bus, type FieldEvents } from '../scripts/bus';
 import { loadEmg, stack, type Clip } from './emg';
 import { accuracy, addWindows, fit, posterior, type LdaModel, type LdaStats } from './lda';
-import { clouds, ellipsePath, mapView, project, svgScale, type Frame } from './map';
+import { mountMap } from './turntable';
 
 const POSE = ['close', 'open', 'pinch', 'point'] as const;
 const NAME = ['hand close', 'hand open', 'pinch', 'point'];
@@ -62,45 +62,14 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
     Array.from(tr, (v, i) => `${i ? 'L' : 'M'}${((i / (tr.length - 1)) * W).toFixed(1)} ${(H / 2 - (v / scale) * H * 0.46).toFixed(1)}`).join('');
   // ------------------------------------------------------------------ the map
 
-  const svg = $<SVGSVGElement>('[data-field-stage]');
-  const view = mapView(emg.meta.model.map);
-  const S = svgScale(JSON.parse(svg.dataset.frame!) as Frame, 440);
-  const dots = $<SVGGElement>('[data-dots]');
-  const cloudPaths = [...root.querySelectorAll<SVGPathElement>('.cloud')];
-  const labels = [...root.querySelectorAll<SVGTextElement>('.label')];
-  const SVGNS = 'http://www.w3.org/2000/svg';
-  /** Redraw the clouds where the current model expects each gesture, and tell the Field. */
-  const drawClouds = (stats: LdaStats) => {
-    const cs = clouds(stats, view);
-    cs.forEach((c, k) => {
-      cloudPaths[k]!.setAttribute('d', ellipsePath(c, 2, S.x, S.y));
-      labels[k]!.setAttribute('x', S.x(c.cx).toFixed(1));
-      labels[k]!.setAttribute('y', (S.y(c.cy + 2 * Math.hypot(c.l21, c.l22)) - 6).toFixed(1));
-    });
-    // In 0..1 of the map's box, y down: the Field draws each cloud as dots sampled from it.
-    emit('emg:map', {
-      clouds: cs.map((c) => [S.x(c.cx) / S.w, S.y(c.cy) / S.h, (c.l11 * S.k) / S.w, (-c.l21 * S.k) / S.h, (-c.l22 * S.k) / S.h]),
-    });
-  };
-  const addDot = (row: ArrayLike<number>, ok: boolean) => {
-    const [x, y] = project(view, row);
-    const prev = dots.lastElementChild;
-    prev?.setAttribute('r', '3');
-    const c = document.createElementNS(SVGNS, 'circle');
-    c.setAttribute('cx', S.x(x).toFixed(1));
-    c.setAttribute('cy', S.y(y).toFixed(1));
-    c.setAttribute('r', '5');
-    c.setAttribute('class', ok ? 'dot' : 'dot miss');
-    dots.append(c);
-    while (dots.childElementCount > 240) dots.firstElementChild!.remove();
-  };
-  const pick = (k: number) => labels.forEach((l, i) => l.toggleAttribute('data-picked', i === k));
+  const map = mountMap(root, emg.meta.model.map, emg.stats);
+  const drawClouds = (stats: LdaStats) => map.setClouds(stats);
 
   let pos = 0; // seconds into the clip
   const showClip = () => {
     const c = clip();
-    dots.replaceChildren();
-    labels.forEach((l, i) => l.toggleAttribute('data-mine', i === st.gesture));
+    map.clearDots();
+    map.mine(st.gesture);
     const d = path(c.trace!);
     tracePath.setAttribute('d', d);
     traceAll.setAttribute('d', d);
@@ -139,7 +108,8 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
     win = -1;
     heldFor = 0;
     until = seconds;
-    for (const d of dots.children) d.classList.add('old');
+    map.ageDots();
+    map.holding(true);
     if (pos >= duration(clip()) - STEP_S) pos = 0;
     last = performance.now();
     raf = requestAnimationFrame(tick);
@@ -168,8 +138,8 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
       votes[k]!++;
       conf[k]! += p[k]!;
       emit('emg:prediction', { gesture: POSE[k]!, p: p[k]! });
-      addDot(c.rows[i]!, k === st.gesture);
-      pick(k);
+      map.addDot(c.rows[i]!, k === st.gesture);
+      map.pick(k);
       pred.textContent = `${NAME[k]}, ${Math.round(p[k]! * 100)}%${k === st.gesture ? '' : ' (misread)'}`;
       pred.toggleAttribute('data-wrong', k !== st.gesture);
     }
@@ -188,7 +158,8 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
     activeBtn = null;
     emit('emg:envelope', { rms: 0 });
     emit('emg:prediction', { gesture: 'rest', p: 1 });
-    pick(-1);
+    map.pick(-1);
+    map.holding(false);
     const n = votes.reduce((a, b) => a + b, 0);
     if (!n) return;
     const k = votes.indexOf(Math.max(...votes));
@@ -322,6 +293,5 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
   $('[data-recal-values]').textContent = '–';
   document.documentElement.dataset.demo = 'ready';
   setStep(2);
-  drawClouds(emg.stats);
   emit('emg:stage', { on: true });
 }

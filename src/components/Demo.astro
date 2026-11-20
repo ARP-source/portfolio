@@ -54,7 +54,7 @@ const W = 960, H = 160;
           </svg>
           <figcaption class="meta" data-field-nomask>
             What the classifier sees. Each cloud is where it expects a gesture to land; each dot is one 200 ms window of
-            the recording, filled if read correctly, hollow if not.<span class="ghost-note"> Dashed: the day-1 clouds.</span>
+            the recording, filled if read correctly, hollow if not.<span class="ghost-note"> Dashed: the day-1 clouds.</span><span class="turn-note"> Drag to turn it.</span>
           </figcaption>
         </figure>
         <div class="hand-slot" data-field-hand aria-hidden="true"></div>
@@ -193,6 +193,10 @@ const W = 960, H = 160;
   .map figcaption { margin-top: 1rem; }
   .ghost-note, [data-ghosts] { display: none; }
   .scope[data-recalibrated] .ghost-note { display: inline; }
+  .turn-note { display: none; }
+  .map:has([data-turns]) .turn-note { display: inline; }
+  .map-svg[data-turns] { cursor: grab; touch-action: pan-y; }
+  .map-svg[data-dragging] { cursor: grabbing; }
   .scope[data-recalibrated] [data-ghosts] { display: inline; }
   .hand-slot { display: none; }
   /* The hand forms only where the hero's hand does: the same width, so the same point cloud is loaded. */

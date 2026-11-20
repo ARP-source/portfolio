@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { decode, stack, type EmgMeta } from './emg';
 import { accuracy, addWindows, fit, predict } from './lda';
-import { clouds, mapFrame, mapView, project } from './map';
+import { clouds, mapFrame, mapView, project, rotation, screenCloud } from './map';
 
 export function demoSummary() {
   const meta = JSON.parse(readFileSync('public/demo/emg.json', 'utf8')) as EmgMeta;
@@ -38,5 +38,8 @@ export function demoSummary() {
     Array.from(tr, (v, i) => `${i ? 'L' : 'M'}${((i / (tr.length - 1)) * W).toFixed(1)} ${(H / 2 - (v / scale) * H * 0.46).toFixed(1)}`).join('');
   const view = mapView(meta.model.map);
   const frame = mapFrame([...t1.rows, ...t29.rows].map((r) => project(view, r)));
-  return { meta, acc, worst, worstAs: perGesture[worst]!.as, scale, play, path, frame, day1Clouds: clouds(emg.stats, view) };
+  // Drawn facing front, the view the page starts in (and keeps on phones).
+  const front = rotation(0, 0);
+  const day1Clouds = clouds(emg.stats, view).map((c) => screenCloud(c, front, frame));
+  return { meta, acc, worst, worstAs: perGesture[worst]!.as, scale, play, path, frame, day1Clouds };
 }

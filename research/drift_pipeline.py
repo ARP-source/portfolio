@@ -254,19 +254,20 @@ def main():
     g6 = lambda v: [float(f"{x:.7g}") for x in np.ravel(v)]
     model = {"lambda": M["lam"], "n": n.tolist(), "mean": [g6(r) for r in mu], "scatterUpper": g6(scatter[iu]),
              "zMean": g6(M["mean"]), "zSd": g6(M["sd"])}
-    # The demo's map: the two directions that best separate the gestures on day 1 (the leading
-    # discriminant axes, eigenvectors of Sw^-1 Sb with the model's shrunk Sw), fixed from then on,
-    # so a day-29 window lands wherever the day-1 view puts it and drift shows as movement.
+    # The demo's map: the directions that best separate the gestures on day 1 (the discriminant
+    # axes, eigenvectors of Sw^-1 Sb with the model's shrunk Sw), fixed from then on, so a day-29
+    # window lands wherever the day-1 view puts it and drift shows as movement. Four gestures span
+    # exactly three such axes: all of what the day-1 model separates them by.
     Sw = scatter / n.sum()
     Sw = (1 - M["lam"]) * Sw + M["lam"] * np.mean(np.diag(Sw)) * np.eye(len(Sw))
     origin = mu.mean(0)
     Sb = sum(n[c] * np.outer(mu[c] - origin, mu[c] - origin) for c in range(len(n))) / n.sum()
     ev, V = np.linalg.eig(np.linalg.solve(Sw, Sb))
-    V = V[:, np.argsort(-ev.real)[:2]].real
+    V = V[:, np.argsort(-ev.real)[:3]].real
     V /= np.sqrt(np.einsum("di,de,ei->i", V, Sw, V))   # unit within-class SD along each axis
     P = (mu - origin) @ V
-    V *= np.sign([P[0, 0], P[1, 1]])                   # hand close to the right, hand open up
-    model["map"] = {"origin": g6(origin), "axes": [g6(V[:, 0]), g6(V[:, 1])]}
+    V *= np.sign([P[0, 0], P[1, 1], P[2, 2]])          # hand close right, hand open up, pinch near
+    model["map"] = {"origin": g6(origin), "axes": [g6(V[:, i]) for i in range(3)]}
     open(f"{a.out}/emg.bin", "wb").write(bytes(blob))
     meta = {
         "source": "GRABMyo v1.1.0 (Pradhan, He & Jiang, Scientific Data 9:733, 2022)",

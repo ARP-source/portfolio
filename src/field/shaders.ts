@@ -278,22 +278,25 @@ vec2 heroTarget(vec4 h, float seed, vec2 uv, out float s, out float depth){
 }
 ${reformChunk}
 ${demoWeightChunk}
-uniform vec4 uMapC[4];      // per gesture: centre xy (0..1 of the map), l11, l21 of its covariance's Cholesky factor
-uniform vec4 uMapL;         // l22 per gesture
+uniform vec3 uMapC[4];      // per gesture, as seen now: centre xy (0..1 of the map, y down), depth
+uniform vec3 uMapX[4];      // rows of M: the cloud's dots are centre + M z, z a 3D standard normal
+uniform vec3 uMapY[4];
+uniform vec3 uMapZ[4];
 // A truncated Gaussian sample from the gesture's cloud: dense in the middle, thinning to its edge.
-vec2 cloudTarget(float seed){
+vec2 cloudTarget(float seed, out float depth){
   int k=int(cloudOf(seed));
-  vec2 j=jitter(seed+0.37)+0.5;
-  float r=min(sqrt(-2.0*log(max(j.x,0.005))),${f(DEMO.cloudSd)});
-  vec2 z=r*vec2(cos(6.2832*j.y),sin(6.2832*j.y));
-  vec4 c=uMapC[k];
-  vec2 p=vec2(c.x+c.z*z.x, c.y+c.w*z.x+uMapL[k]*z.y);
-  return uDemoRect.xy+p*uDemoRect.zw;
+  vec2 a=jitter(seed+0.37)+0.5, b=jitter(seed+0.71)+0.5;
+  float ra=sqrt(-2.0*log(max(a.x,0.005))), rb=sqrt(-2.0*log(max(b.x,0.005)));
+  vec3 z=vec3(ra*cos(6.2832*a.y),ra*sin(6.2832*a.y),rb*cos(6.2832*b.y));
+  float l=length(z); if(l>${f(DEMO.cloudSd)}) z*=${f(DEMO.cloudSd)}/l;
+  vec3 c=uMapC[k];
+  depth=clamp(c.z+dot(uMapZ[k],z),-1.0,1.0);
+  return uDemoRect.xy+(c.xy+vec2(dot(uMapX[k],z),dot(uMapY[k],z)))*uDemoRect.zw;
 }
 vec2 demoTarget(vec4 h, float seed, vec2 uv, out float depth){
   depth=0.0;
   if(isHand(h)) return handTarget(uv,depth);
-  return cloudTarget(seed);
+  return cloudTarget(seed,depth);
 }
 `;
 

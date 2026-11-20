@@ -14,7 +14,7 @@ import {
   Scene,
   ShaderMaterial,
   WebGLRenderer,
-  Vector4,
+  Vector3,
   type IUniform,
   type Texture,
 } from 'three';
@@ -228,8 +228,10 @@ export class Field {
       uDemo: { value: [0, 0, 0, 0] },
       uDemoRect: { value: [0, -1000, 1, 1] },
       uDemoVel: { value: [0, 0] },
-      uMapC: { value: Array.from({ length: 4 }, () => new Vector4(0.5, 0.5, 0.05, 0)) },
-      uMapL: { value: new Vector4(0.05, 0.05, 0.05, 0.05) },
+      uMapC: { value: Array.from({ length: 4 }, () => new Vector3(0.5, 0.5, 0)) },
+      uMapX: { value: Array.from({ length: 4 }, () => new Vector3(0.05, 0, 0)) },
+      uMapY: { value: Array.from({ length: 4 }, () => new Vector3(0, 0.05, 0)) },
+      uMapZ: { value: Array.from({ length: 4 }, () => new Vector3(0, 0, 0.05)) },
     };
 
     document.documentElement.dataset.mask = maskMode();
@@ -987,10 +989,13 @@ export class Field {
       if (!on) Object.assign(d, { envTo: 0, picked: -1, loss: 0, seen: false, pose: 'rest' });
     };
     const map = ({ clouds }: { clouds: number[][] }) => {
-      const C = this.#shared.uMapC!.value as Vector4[], L = this.#shared.uMapL!.value as Vector4;
-      clouds.forEach(([cx, cy, l11, l21, l22], k) => {
-        C[k]!.set(cx!, cy!, l11!, l21!);
-        L.setComponent(k, l22!);
+      const u = this.#shared;
+      const [C, X, Y, Z] = (['uMapC', 'uMapX', 'uMapY', 'uMapZ'] as const).map((n) => u[n]!.value as Vector3[]);
+      clouds.forEach((v, k) => {
+        C![k]!.fromArray(v, 0);
+        X![k]!.fromArray(v, 3);
+        Y![k]!.fromArray(v, 6);
+        Z![k]!.fromArray(v, 9);
       });
       d.map = true;
     };

@@ -17,6 +17,10 @@ export interface FieldEvents {
    * The demo map's four gesture clouds (close, open, pinch, point) as the current model sees them:
    * [cx, cy, l11, l21, l22], centre and covariance Cholesky factor in 0..1 units of the map's box.
    */
+  /**
+   * The demo map's clouds as seen right now, in 0..1 of the map's box (y down): per gesture
+   * [cx, cy, depth, then the 3x3 matrix M row by row], a cloud's dots being centre + M z, z ~ N(0, I).
+   */
   'emg:map': { clouds: number[][] };
   /** RMS envelope of the replayed recording, 0 (at rest) .. 1 (the loudest clip). */
   'emg:envelope': { rms: number };

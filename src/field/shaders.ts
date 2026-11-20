@@ -76,11 +76,15 @@ const float THREAD_SHARE=${f(THREAD.share)};
 // Members are the seeds whose fract(seed*17.93) falls under the share; spread over that range they
 // are evenly spread along the line too (a second hash of the same seed would bunch them up).
 float threadU(float seed){ return fract(seed*17.93)/THREAD_SHARE; }
+bool threadMember(vec4 h, float seed){
+  return uThread.x>0.0 && !isHand(h) && fract(seed*17.93)<THREAD_SHARE && fract(sin(seed*311.7)*43758.545)<=uThread.w;
+}
+// A dot joins a little before the pen reaches its spot, rides the pen's tip, and is left behind on
+// its spot as the pen moves on (see threadTarget), so the line draws from left to right.
 float threadWeight(vec4 h, float seed){
-  if(uThread.x<=0.0 || isHand(h) || fract(seed*17.93)>=THREAD_SHARE) return 0.0;
-  if(fract(sin(seed*311.7)*43758.545)>uThread.w) return 0.0;
+  if(!threadMember(h,seed)) return 0.0;
   float u=threadU(seed);
-  return uThread.x*smoothstep(u*0.75,u*0.75+0.25,uThread.y);
+  return uThread.x*smoothstep(u-0.35,u-0.05,uThread.y);
 }
 `;
 
@@ -326,7 +330,7 @@ vec2 demoTarget(vec4 h, float seed, vec2 uv, out float depth){
 ${threadWeightChunk}
 uniform float uThreadY[${THREAD.n}]; // the line's height at evenly spaced x, 0 top .. 1 bottom of the box
 vec2 threadTarget(float seed){
-  float u=threadU(seed);
+  float u=min(threadU(seed),max(uThread.y,0.0));
   float x=u*${THREAD.n - 1}.0; int i=int(min(floor(x),${THREAD.n - 2}.0));
   float y=mix(uThreadY[i],uThreadY[i+1],x-float(i));
   // A stroke a couple of px thick, like the SVG line it stands in for.
@@ -455,7 +459,7 @@ void main(){
     fw=max(fw,dw);
   }
   // Dots arriving from the last page's card keep the place they were given there.
-  if(uSnap>0.5 && !(uThread.z>0.5 && tw>0.0)) pos=flockSlot(H,uFlockT);
+  if(uSnap>0.5 && !(uThread.z>0.5 && threadMember(H,P.w))) pos=flockSlot(H,uFlockT);
   // z carries the hand's depth to the point shader (near dots larger and darker).
   gl_FragColor=vec4(pos,depth*fw,P.w);
 }

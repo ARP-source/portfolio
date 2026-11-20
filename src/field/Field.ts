@@ -87,7 +87,7 @@ const HAND_SPLIT = 0.6;
  * the pick band (fractions of the screen height), holds it; another card takes over only once it
  * is nearer by margin of the screen, so a card sitting halfway doesn't flip it back and forth.
  */
-const THREAD_TIME = { drawS: 1.1, undrawS: 0.45, arriveS: 2.5 };
+const THREAD_TIME = { drawS: 1.3, undrawS: 0.5, arriveS: 2.5 };
 const THREAD_BAND = { pick: [0.25, 0.75], margin: 0.12 } as const;
 
 interface Sim {
@@ -269,8 +269,8 @@ export class Field {
       // The dots start on the card's line as it was on the last page, then swim to this page's.
       const el = document.querySelector(`[data-thread-line="${o.arrive.slug}"]`);
       if (el) {
+        // The pen starts again from the left on this page's line, like every other line.
         this.#threadOn(el);
-        this.#thread.pen = 1;
         this.#thread.arriving = THREAD_TIME.arriveS;
       }
     }
@@ -874,8 +874,9 @@ export class Field {
         v[1] = v[1]! + ((r[1] - py!) / dt - v[1]!) * k;
       }
       u.uThreadRect!.value = r;
-      // The SVG line steps back while the dots draw it, as the hero's does.
-      if (t.pen > 0.5) t.el!.setAttribute('data-threaded', '');
+      // The SVG line steps aside while the dots draw it, as the hero's does, so nothing is drawn
+      // ahead of the pen.
+      if (t.pen > 0) t.el!.setAttribute('data-threaded', '');
       else t.el!.removeAttribute('data-threaded');
     }
     // About three dots per px of line: enough for a solid stroke, and a short line isn't a blob.

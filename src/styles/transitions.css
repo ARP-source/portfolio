@@ -21,9 +21,9 @@
   }
 }
 
-/* While the field's dots draw a project's line, the SVG line steps back, as the hero's does. */
+/* While the field's dots draw a project's line, the SVG line steps aside, as the hero's does. */
 html[data-field='on'] svg[data-threaded] .trace {
-  opacity: 0.18;
+  opacity: 0;
 }
 .spark .trace,
 .spark .end {

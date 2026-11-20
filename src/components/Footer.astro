@@ -1,0 +1,48 @@
+---
+import { site } from '../site.config';
+
+// Written by CI after Lighthouse runs against the built site (scripts/lighthouse.mjs).
+// Absent locally or before the first CI run: then the footer shows no score at all.
+const found = import.meta.glob<{ default: LighthouseResult }>('../data/lighthouse.json', { eager: true });
+type Scores = { performance: number; accessibility: number; bestPractices: number; seo: number };
+type LighthouseResult = { measuredAt: string; url: string; lighthouse: string; mobile: Scores; desktop: Scores };
+const lh = Object.values(found)[0]?.default;
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer wrap">
+  <div class="graticule meta"><span>end of signal</span><span>{year}</span></div>
+  <div class="cols meta">
+    <ul class="plain">
+      <li>{site.name}</li>
+      <li><a href={site.github}>github.com/ARP-source</a></li>
+      <li><a href="/changelog">changelog</a></li>
+    </ul>
+    <p>
+      Set in Fraunces and JetBrains Mono (SIL OFL 1.1).<br />
+      EMG data: GRABMyo v1.1.0, CC BY 4.0,
+      <a href="https://doi.org/10.13026/89dm-f662">doi:10.13026/89dm-f662</a>.<br />
+      No analytics, no trackers.
+    </p>
+    {
+      lh && (
+        <p>
+          Lighthouse {lh.lighthouse}, home page, measured in CI {lh.measuredAt.slice(0, 10)}:<br />
+          mobile performance <span class="signal">{lh.mobile.performance}</span> · desktop{' '}
+          <span class="signal">{lh.desktop.performance}</span> · accessibility{' '}
+          <span class="signal">{lh.mobile.accessibility}</span> · best practices{' '}
+          <span class="signal">{lh.mobile.bestPractices}</span>
+        </p>
+      )
+    }
+  </div>
+</footer>
+
+<style>
+  .site-footer { padding-block: 4rem 3rem; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.5rem 2.5rem; }
+  .cols p { margin: 0; }
+  .plain { list-style: none; margin: 0; padding: 0; }
+  .plain li { margin: 0; }
+  .plain a { display: inline-block; padding-block: 0.3rem; }
+</style>

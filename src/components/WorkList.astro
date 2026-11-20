@@ -1,0 +1,26 @@
+---
+import { getCollection } from 'astro:content';
+import { orderings } from '../site.config';
+import ProjectCard from './ProjectCard.astro';
+interface Props { order: keyof typeof orderings }
+const { order } = Astro.props;
+const all = await getCollection('projects');
+const byId = new Map(all.map((p) => [p.id, p]));
+const missing = orderings[order].filter((id) => !byId.has(id));
+if (missing.length) throw new Error(`ordering "${order}" names unknown projects: ${missing.join(', ')}`);
+const projects = orderings[order].map((id) => byId.get(id)!);
+---
+
+<section id="work" class="wrap" aria-labelledby="work-title" data-section="work">
+  <div class="graticule meta"><span>selected work</span><span>{projects.length} projects</span></div>
+  <h2 id="work-title">Selected work</h2>
+  <p class="meta lead">Every number names its source file. Prototypes are labelled as prototypes.</p>
+  <div class="list">
+    {projects.map((project, i) => <ProjectCard project={project} index={i} />)}
+  </div>
+  <p class="todo">TODO(anuraag): slots for Professor Pip and others; ask before adding.</p>
+</section>
+
+<style>
+  .lead { margin: 0.75rem 0 2rem; }
+</style>

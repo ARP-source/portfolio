@@ -1,0 +1,84 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import KeyMetric from '../../components/KeyMetric.astro';
+import Sparkline from '../../components/Sparkline.astro';
+import Investigating from '../../components/Investigating.astro';
+
+export async function getStaticPaths() {
+  const projects = await getCollection('projects');
+  return projects.map((project) => ({ params: { slug: project.id }, props: { project } }));
+}
+const { project } = Astro.props;
+const p = project.data;
+const { Content } = await render(project);
+const statusLabel = { shipped: 'shipped', 'in-progress': 'in progress', prototype: 'prototype' }[p.status];
+---
+
+<Base title={p.title} description={p.oneLiner}>
+  <article class="notebook wrap" aria-labelledby="title">
+    <p class="meta crumbs"><a href="/#work">work</a> / {project.id}</p>
+    <header>
+      <p class="meta">{statusLabel} · {p.dates}</p>
+      <h1 id="title">{p.title}</h1>
+      <p class="one">{p.oneLiner}</p>
+      <dl class="facts meta">
+        <div><dt>role</dt><dd>{p.role}</dd></div>
+        <div><dt>stack</dt><dd>{p.stack.join(' · ')}</dd></div>
+        <div>
+          <dt>links</dt>
+          <dd>
+            {p.links.repo && <a href={p.links.repo}>repository</a>}
+            {p.links.demo && <> · <a href={p.links.demo}>live</a></>}
+            {p.links.video && <> · <a href={p.links.video}>video</a></>}
+            {p.links.extra?.map((l) => <> · <a href={l.href}>{l.label}</a></>)}
+          </dd>
+        </div>
+      </dl>
+      <div class="signal-row">
+        {p.sparkline && <Sparkline slug={project.id} size="header" {...p.sparkline} />}
+        {p.keyMetric && <KeyMetric metric={p.keyMetric} size="header" />}
+      </div>
+      {p.sparkline && <p class="meta">series source: {p.sparkline.source}</p>}
+    </header>
+    {p.investigating && <Investigating items={p.investigating} />}
+    <div class="body col">
+      <Content />
+    </div>
+    <p class="meta back"><a href="/#work">← all work</a></p>
+  </article>
+</Base>
+
+<style>
+  .notebook { padding-block: 2rem 4rem; }
+  .crumbs a { color: var(--bone-dim); }
+  h1 { font-size: clamp(2.6rem, 1.8rem + 4vw, 4.75rem); margin: 0.5rem 0 1rem; }
+  .one { font-size: 1.3rem; line-height: 1.4; max-width: 40rem; color: var(--bone); }
+  .facts { display: grid; gap: 0.35rem; margin: 2rem 0; max-width: 46rem; }
+  .facts div { display: grid; grid-template-columns: 5rem 1fr; gap: 1rem; }
+  .facts dt { color: var(--olive-bright); }
+  .facts dd { margin: 0; color: var(--bone); min-width: 0; overflow-wrap: anywhere; }
+  .signal-row { display: flex; flex-wrap: wrap; gap: 1.5rem 3rem; align-items: flex-end; margin: 2.5rem 0 0.75rem; }
+  .body { margin-top: 3rem; }
+  .body :global(h2) {
+    font-size: 1.6rem;
+    margin: 3rem 0 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--olive-deep);
+  }
+  .body :global(h2::before) {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    color: var(--olive-bright);
+    margin-bottom: 0.5rem;
+  }
+  .body :global(h2#question::before) { content: '01 / question'; }
+  .body :global(h2#setup::before) { content: '02 / setup'; }
+  .body :global(h2#result::before) { content: '03 / result'; }
+  .body :global(h2#what-failed::before) { content: '04 / what failed'; }
+  .body :global(h2#whats-next::before) { content: '05 / next'; }
+  .body :global(table) { font-size: 0.78rem; }
+  .back { margin-top: 4rem; }
+</style>

@@ -1,0 +1,18 @@
+---
+import { site } from '../site.config';
+---
+
+<section id="contact" class="wrap" aria-labelledby="contact-title" data-section="contact">
+  <div class="graticule meta"><span>contact</span><span>open to internships and lab positions</span></div>
+  <h2 id="contact-title">Contact</h2>
+  <ul class="mono links">
+    <li><a href={site.github}>github.com/ARP-source</a></li>
+    {site.email && <li><a href={`mailto:${site.email}`}>{site.email}</a></li>}
+    {site.linkedin && <li><a href={site.linkedin}>LinkedIn</a></li>}
+  </ul>
+  {!site.email && <p class="todo">TODO(anuraag): email and LinkedIn go in src/site.config.ts.</p>}
+</section>
+
+<style>
+  .links { list-style: none; padding: 0; margin: 1.5rem 0; font-size: 1rem; }
+</style>

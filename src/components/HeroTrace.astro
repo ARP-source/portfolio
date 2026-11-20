@@ -1,0 +1,27 @@
+---
+// Static SVG of one real recording. It is the hero with JS off or no WebGL, and the
+// shape the particle `trace` formation will match in Phase 3.
+import trace from '../data/hero-trace.json';
+const W = 1200, H = 220, MID = H / 2, AMP = H * 0.44;
+const n = trace.points.length;
+const d = trace.points
+  .map((v, i) => `${i ? 'L' : 'M'}${((i / (n - 1)) * W).toFixed(1)} ${(MID - v * AMP).toFixed(1)}`)
+  .join('');
+---
+
+<figure class="hero-trace">
+  <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    <line class="baseline" x1="0" x2={W} y1={MID} y2={MID}></line>
+    <path class="trace" d={d}></path>
+  </svg>
+  <figcaption class="meta">
+    <span>{trace.source}</span> · <span>{trace.channel}</span> · <span>{trace.filter}</span> · <span>750 ms</span>
+  </figcaption>
+</figure>
+
+<style>
+  .hero-trace { margin: 0; }
+  svg { display: block; width: 100%; height: clamp(5rem, 12vw, 9rem); overflow: visible; }
+  .baseline { stroke: var(--olive-deep); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  figcaption { margin-top: 0.75rem; }
+</style>

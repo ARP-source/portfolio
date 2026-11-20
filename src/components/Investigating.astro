@@ -1,0 +1,28 @@
+---
+interface Props { items: { item: string; done: boolean }[] }
+const { items } = Astro.props;
+const done = items.filter((i) => i.done).length;
+---
+
+<aside class="investigating" aria-labelledby="inv-title">
+  <p class="meta" id="inv-title">currently investigating · {done}/{items.length} done</p>
+  <ul class="mono">
+    {
+      items.map((i) => (
+        <li class={i.done ? 'done' : ''}>
+          <span aria-hidden="true">{i.done ? '■' : '□'}</span> <span class="sr-only">{i.done ? 'Done:' : 'Open:'}</span>
+          {i.item}
+        </li>
+      ))
+    }
+  </ul>
+</aside>
+
+<style>
+  .investigating { border: 1px solid var(--olive); padding: 1.25rem 1.5rem; margin: 2rem 0; max-width: 38rem; }
+  ul { list-style: none; padding: 0; margin: 0.75rem 0 0; font-size: 0.82rem; }
+  li { color: var(--bone-dim); }
+  li.done { color: var(--bone); }
+  li.done span[aria-hidden] { color: var(--bronze); }
+  li span[aria-hidden] { color: var(--olive); }
+</style>

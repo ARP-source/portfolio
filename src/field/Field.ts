@@ -23,6 +23,7 @@ import { durations, palette, springAt, tracePlayback } from '../tokens/tokens';
 import { TIER_SIZE } from './tiers';
 import { pointsFragment, pointsVertex, positionShader, velocityShader } from './shaders';
 import trace from '../data/hero-trace.json';
+import { BONES, POSES, SEQUENCE, blendPose, handWorld, poseBones, projectHand, sampleHand } from './hand';
 
 /** Formations implemented in v1. The rest of the contract arrives in later phases. */
 const FORM_VALUE: Partial<Record<Formation, number>> = { swarm: 0, trace: 1 };
@@ -41,11 +42,19 @@ const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number
   halo: { strength: 0.88, pad: 4, blur: 3, lines: true },
 };
 const PARALLAX = 0.3, WRAP_M = 40;
+/** How long the hero takes to dissolve into the swarm; each particle's own release is a slice of it. */
+const RELEASE_MS = 2600;
 const TEXT_SELECTOR =
   'main h1, main h2, main h3, main p, main li, main dt, main dd, main th, main td, main figcaption, main a, main .meta, header a, footer a, footer p';
 
+/** Hand timing: a slow turn, and a new gesture every few seconds with a smooth morph between. */
+const HAND = { spinS: 30, holdS: 6.5, morphS: 1.8, reducedSpin: -28 };
+const HAND_SPLIT = 0.6;
+
 interface Sim {
   size: number;
+  handLocal: Float32Array;
+  handTex: DataTexture;
   gpu: GPUComputationRenderer;
   pos: Variable;
   vel: Variable;
@@ -84,6 +93,8 @@ export class Field {
   #scrollY = scrollY;
   #scrollDy = 0;
   #form = { from: 0, to: 0, start: 0, value: 0 };
+  #bones = new Float32Array(BONES * 16);
+  #grip = 0;
   #bleed = 0;
   #bleedTarget = 0;
   #pointer = { x: -1e4, y: -1e4, strength: 0, lastMove: 0 };
@@ -144,6 +155,10 @@ export class Field {
       uDrift: { value: c(palette.drift) },
       uInkDim: { value: c(palette.inkDim) },
       uBleed: { value: 0 },
+      uHandOn: { value: 0 },
+      uHandRect: { value: [0, -1000, 1, 1] },
+      uBones: { value: this.#bones },
+      uHandLocal: { value: null },
       uMask: { value: tex },
       uFade: { value: 0 },
     };
@@ -162,7 +177,7 @@ export class Field {
     const yieldTask = () => new Promise<void>((r) => setTimeout(r, 0));
     this.#resize();
     // Only what is on screen now counts: the bus may still remember a hero the visitor has scrolled past.
-    const startForm: Formation = this.#heroVisible() ? 'trace' : 'swarm';
+    const startForm: Formation = this.#wantHero() ?? this.#heroVisible() ? 'trace' : 'swarm';
     this.#form = { from: FORM_VALUE[startForm]!, to: FORM_VALUE[startForm]!, start: 0, value: FORM_VALUE[startForm]! };
     await yieldTask();
     if (this.#disposed) return;
@@ -197,7 +212,7 @@ export class Field {
     const now = performance.now();
     // Leaving the trace after it has already scrolled out of view (a fast scroll): don't fly thousands
     // of particles back from off-screen. Place them at their swarm homes and fade the field back in.
-    if (to === 0 && this.#form.value > 0.5 && !this.#traceOnScreen() && this.#sim) {
+    if (to === 0 && this.#form.value > 0.5 && !this.#traceNear() && this.#sim) {
       this.#form = { from: 0, to: 0, start: now, value: 0 };
       this.#shared.uSnap!.value = 1;
       this.#step(1 / 60);
@@ -262,6 +277,13 @@ export class Field {
     home.minFilter = home.magFilter = NearestFilter;
     home.needsUpdate = true;
 
+    const handLocal = sampleHand(n);
+    const handTex = new DataTexture(handLocal, size, size, RGBAFormat, FloatType);
+    handTex.minFilter = handTex.magFilter = NearestFilter;
+    handTex.needsUpdate = true;
+    this.#shared.uHandLocal!.value = handTex;
+    this.#updateHand(0);
+
     const p0 = gpu.createTexture();
     const v0 = gpu.createTexture();
     const pa = p0.image.data as Float32Array;
@@ -272,15 +294,19 @@ export class Field {
     const pts = trace.points, last = pts.length - 1;
     for (let i = 0; i < n; i++) {
       const seed = Math.random();
-      if (onTrace) {
+      const handOn = this.#shared.uHandOn!.value === 1;
+      if (onTrace && handOn && homes[i * 4 + 3]! > HAND_SPLIT) {
+        const [hx, hy, hz] = projectHand(handLocal, i, this.#bones, this.#shared.uHandRect!.value as number[]);
+        pa[i * 4] = hx; pa[i * 4 + 1] = hy; pa[i * 4 + 2] = hz;
+      } else if (onTrace) {
         // Same target as traceTarget() in the shader, evaluated once on the CPU.
-        const u = homes[i * 4 + 3]!;
+        const u = handOn ? homes[i * 4 + 3]! / HAND_SPLIT : homes[i * 4 + 3]!;
         const v = (u + (this.#shared.uPhase!.value as number)) * 0.5;
         const x = (1 - Math.abs(1 - 2 * (v - Math.floor(v)))) * last;
         const k = Math.floor(x), f = x - k;
         const sv = pts[k]! * (1 - f) + pts[Math.min(k + 1, last)]! * f;
         pa[i * 4] = rx! + u * rw!;
-        pa[i * 4 + 1] = ry! + rh! * 0.5 - sv * rh! * 0.44 + (seed - 0.5) * 2.4;
+        pa[i * 4 + 1] = ry! + rh! * 0.5 - sv * rh! * 0.44 + (((seed * 7.13) % 1) - 0.5) * 2.4;
       } else {
         const span = this.#vh + 2 * WRAP_M;
         const hy = homes[i * 4 + 1]! * span - scrollY * PARALLAX;
@@ -319,7 +345,7 @@ export class Field {
     const points = new Points(geometry, material);
     points.frustumCulled = false;
     this.#scene.add(points);
-    this.#sim = { size, gpu, pos, vel, home, points, geometry, material };
+    this.#sim = { size, handLocal, handTex, gpu, pos, vel, home, points, geometry, material };
     this.stats.particles = n;
   }
 
@@ -330,6 +356,7 @@ export class Field {
     s.geometry.dispose();
     s.material.dispose();
     s.home.dispose();
+    s.handTex.dispose();
     s.gpu.dispose();
     this.#sim = null;
   }
@@ -343,6 +370,7 @@ export class Field {
     u.uScrollDy!.value = this.#scrollDy;
     u.uScroll!.value = this.#scrollY;
     u.uPhase!.value = playbackPhase();
+    this.#updateHand(dt);
     this.#bleed += (this.#bleedTarget - this.#bleed) * (1 - Math.exp(-dt * 2.5));
     u.uBleed!.value = this.#bleed;
     this.#scrollDy = 0;
@@ -361,16 +389,22 @@ export class Field {
     this.#raf = requestAnimationFrame(this.#frame);
     const raw = (now - this.#last) / 1000;
     this.#last = now;
-    const dt = Math.min(raw, 1 / 30);
+    // rAF timestamps are frame-start times and can precede the performance.now() taken at start.
+    const dt = Math.min(Math.max(raw, 0), 1 / 30);
     this.#time += dt;
 
-    const t = Math.min(1, (now - this.#form.start) / durations.morph);
-    this.#form.value = this.#form.from + (this.#form.to - this.#form.from) * springAt(t);
+    const leaving = this.#form.to < this.#form.from;
+    const t = Math.min(1, (now - this.#form.start) / (leaving ? RELEASE_MS : durations.morph));
+    // Leaving: an even sweep, so particles let go one after another rather than all at once.
+    const e = leaving ? t * t * (3 - 2 * t) : springAt(t);
+    this.#form.value = this.#form.from + (this.#form.to - this.#form.from) * e;
 
     const p = this.#pointer;
     if (now - p.lastMove > 1200) p.strength *= 0.92;
     this.#shared.uPointer!.value = [p.x, p.y, p.strength];
 
+    const want = this.#wantHero();
+    if (want !== null && (want ? 1 : 0) !== this.#form.to) this.setFormation(want ? 'trace' : 'swarm');
     this.#updateTraceRect();
     this.#step(dt);
     this.#fade = Math.min(1, this.#fade + dt / (durations.ui / 1000));
@@ -445,11 +479,47 @@ export class Field {
     return r.bottom > this.#vh * 0.2 && r.top < this.#vh * 0.8;
   }
 
-  #traceOnScreen(): boolean {
+  /** Within a screen of the viewport: close enough that released particles can stream in. */
+  #traceNear(): boolean {
     const el = document.querySelector('.hero-trace svg');
     if (!el) return false;
     const r = el.getBoundingClientRect();
-    return r.bottom > 0 && r.top < this.#vh;
+    return r.bottom > -this.#vh && r.top < 2 * this.#vh;
+  }
+
+  /**
+   * The hero holds together until the divider above the third project scrolls into view, then
+   * dissolves; scrolling back above it re-forms it. Null on pages without that divider.
+   */
+  #wantHero(): boolean | null {
+    const el = document.querySelector('[data-field-release]');
+    if (!el || !document.querySelector('.hero-trace svg')) return null;
+    return el.getBoundingClientRect().top > this.#vh;
+  }
+
+  /** Hand rect, pose (gesture cycle + EMG grip), and the slow turn, as 16 bone matrices. */
+  #updateHand(dt: number): void {
+    const el = document.querySelector<HTMLElement>('.hero-hand');
+    const r = el?.getBoundingClientRect();
+    const on = !!r && r.width > 0 && r.height > 0;
+    this.#shared.uHandOn!.value = on ? 1 : 0;
+    if (!on) return;
+    this.#shared.uHandRect!.value = [r.x, r.y, r.width, r.height];
+    const still = this.#o.reducedMotion;
+    const t = this.#time;
+    let pose = POSES.relaxed;
+    if (!still) {
+      const cycle = HAND.holdS + HAND.morphS;
+      const k = Math.max(0, Math.floor(t / cycle));
+      const a = POSES[SEQUENCE[k % SEQUENCE.length]!], b = POSES[SEQUENCE[(k + 1) % SEQUENCE.length]!];
+      const m = Math.max(0, (t - k * cycle - HAND.holdS) / HAND.morphS);
+      pose = blendPose(a, b, m * m * (3 - 2 * m));
+    }
+    // Grip follows the EMG envelope where new samples enter the trace (its right end, under the hand).
+    const env = still ? 0 : envelopeAt(playbackPhase());
+    this.#grip += (Math.min(1, Math.max(0, (env - 0.12) / 0.35)) - this.#grip) * (1 - Math.exp(-dt * 4));
+    const spin = still ? HAND.reducedSpin : (t / HAND.spinS) * 360 - 25;
+    poseBones(pose, handWorld(spin), this.#grip, this.#bones);
   }
 
   #updateTraceRect(): void {
@@ -550,6 +620,10 @@ export class Field {
       this.#scrollDy += y - this.#scrollY;
       this.#scrollY = y;
       this.#mask.dirty = true;
+      if (this.#o.reducedMotion) {
+        const want = this.#wantHero();
+        if (want !== null && (want ? 1 : 0) !== this.#form.to) this.setFormation(want ? 'trace' : 'swarm');
+      }
       stillUpdate();
     });
     on('pointermove', (e) => {
@@ -576,11 +650,12 @@ export class Field {
     this.#off.push(() => ro.disconnect());
 
     this.#off.push(
+      // Pages with a release divider are driven from the frame loop instead (#wantHero).
       bus.on('section:enter', ({ id }) => {
-        if (id === 'hero') this.setFormation('trace');
+        if (id === 'hero' && this.#wantHero() === null) this.setFormation('trace');
       }),
       bus.on('section:leave', ({ id }) => {
-        if (id === 'hero') this.setFormation('swarm');
+        if (id === 'hero' && this.#wantHero() === null) this.setFormation('swarm');
       }),
     );
   }
@@ -596,6 +671,21 @@ export const DEFAULT_MASK: MaskMode = 'halo';
  * Playback position in trace lengths. Reads the static SVG's CSS animation clock when it exists,
  * so the particles pick up the line exactly where the SVG left it.
  */
+function traceSample(u: number, phase: number): number {
+  const pts = trace.points, last = pts.length - 1;
+  const v = (u + phase) * 0.5;
+  const x = (1 - Math.abs(1 - 2 * (v - Math.floor(v)))) * last;
+  const k = Math.floor(x), f = x - k;
+  return pts[k]! * (1 - f) + pts[Math.min(k + 1, last)]! * f;
+}
+
+/** Mean rectified EMG over the last tenth of the visible trace. */
+function envelopeAt(phase: number): number {
+  let sum = 0;
+  for (let i = 0; i < 24; i++) sum += Math.abs(traceSample(0.9 + i / 240, phase));
+  return sum / 24;
+}
+
 function playbackPhase(): number {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
   const anim = document.querySelector('.hero-trace .tape')?.getAnimations()[0];

@@ -1,3 +1,5 @@
+import { BONES, HAND_CAM } from './hand';
+
 /**
  * GLSL for the Field. Units are CSS pixels in viewport space; y grows downward like the DOM.
  * texPos: xy position, w seed.  texVel: xy velocity, z activation (0 rest .. 1 signal).
@@ -37,6 +39,36 @@ vec2 curl2(vec3 p){
 }
 `;
 
+/**
+ * Hand and per-particle formation weight; shared by the compute passes and the point shader.
+ * The rightmost 40 % of the swarm (by home x) forms the hand when the hero has room for it,
+ * so particles only travel a short way. Leaving the hero, each particle lets go at its own
+ * moment: the hand first, then the trace from right to left, so the school peels off in order.
+ */
+const handChunk = /* glsl */ `
+uniform float uHandOn;
+uniform vec4 uHandRect;     // x, y, w, h in CSS px
+uniform mat4 uBones[${BONES}];
+uniform sampler2D uHandLocal; // xyz bone-space sample, w bone index
+const float HAND_SPLIT=0.6;
+const float HAND_CAM=${HAND_CAM.toFixed(1)};
+bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
+float traceU(vec4 h){ return uHandOn>0.5 ? h.w/HAND_SPLIT : h.w; }
+float formWeight(vec4 h, float seed, float form){
+  float st=isHand(h) ? 0.78+0.2*fract(seed*7.31) : traceU(h)*0.72+0.06*fract(seed*3.7);
+  float f=clamp((form-st*0.7)/0.3,0.0,1.0);
+  return f*f*(3.0-2.0*f);
+}
+vec2 handTarget(vec2 uv, out float depth){
+  vec4 L=texture2D(uHandLocal,uv);
+  vec3 w=(uBones[int(L.w+0.5)]*vec4(L.xyz,1.0)).xyz;
+  float scale=min(uHandRect.w/2.6,uHandRect.z/1.9);
+  float persp=HAND_CAM/(HAND_CAM-w.z);
+  depth=w.z;
+  return vec2(uHandRect.x+uHandRect.z*0.5+w.x*scale*persp, uHandRect.y+uHandRect.w*0.5-w.y*scale*persp);
+}
+`;
+
 /** Shared uniforms and the trace lookup, prepended to both compute passes. */
 const common = /* glsl */ `
 uniform float uTime;
@@ -52,6 +84,7 @@ uniform float uSnap;        // 1 for a single step: place every particle at its 
 uniform sampler2D uHome;    // xy swarm home (0..1), z size rank, w trace u
 uniform sampler2D uTrace;   // N x 1, r = sample in [-1, 1]
 uniform float uTraceN;
+${handChunk}
 
 float traceAt(float u){
   float x=u*(uTraceN-1.0); float i=floor(x);
@@ -67,13 +100,19 @@ vec2 swarmHome(vec4 h){
   return vec2(h.x*uViewport.x,y);
 }
 vec2 traceTarget(vec4 h, float seed, out float s){
-  float u=h.w;
+  float u=traceU(h);
   // Ping-pong through the recording (forward, then back) so playback loops without a seam.
   s=traceAt(1.0-abs(1.0-2.0*fract((u+uPhase)*0.5)));
   float y=uTraceRect.y+uTraceRect.w*0.5-s*uTraceRect.w*0.44;
   // A line a few px thick, not a single row of points.
-  y+=(seed-0.5)*2.4;
+  y+=(fract(seed*7.13)-0.5)*2.4;
   return vec2(uTraceRect.x+u*uTraceRect.z,y);
+}
+// Where a particle goes in the hero: its point on the hand, or on the trace.
+vec2 heroTarget(vec4 h, float seed, vec2 uv, out float s, out float depth){
+  depth=0.0;
+  if(isHand(h)){ s=0.45; return handTarget(uv,depth); }
+  return traceTarget(h,seed,s);
 }
 `;
 
@@ -92,16 +131,21 @@ void main(){
   float tt=uTime*0.04;
   home+=vec2(snoise(vec3(H.xy*3.0,tt)),snoise(vec3(H.xy*3.0+17.0,tt)))*70.0;
   vec2 flow=curl2(vec3(pos/260.0,tt+seed*0.15));
-  vec2 desired=(home-pos)*1.1+flow*6.0;
-  float sp=length(desired); if(sp>700.0) desired*=700.0/sp;
-  vec2 aSwarm=(desired-vel)*3.0;
+  // Schooling, like krill: a large, slowly turning current that neighbours share, so a released
+  // group travels together and fans out, instead of every dot racing straight to its own home.
+  vec2 school=curl2(vec3(pos/650.0,uTime*0.05+3.0));
+  float sl=length(school); school=sl>0.001 ? school/sl : vec2(0.0);
+  vec2 desired=(home-pos)*0.8+school*70.0+flow*4.0;
+  float sp=length(desired); if(sp>320.0) desired*=320.0/sp;
+  vec2 aSwarm=(desired-vel)*2.0;
 
-  // Trace: critically damped spring to a point on the recorded EMG line.
-  float s; vec2 target=traceTarget(H,seed,s);
+  // Hero: critically damped spring to a point on the hand or the recorded EMG line.
+  float s, depth; vec2 target=heroTarget(H,seed,uv,s,depth);
   const float k=60.0;
   vec2 aTrace=k*(target-pos)-2.0*sqrt(k)*vel;
 
-  vec2 acc=mix(aSwarm,aTrace,uForm);
+  float fw=formWeight(H,seed,uForm);
+  vec2 acc=mix(aSwarm,aTrace,fw);
 
   // The visitor's pointer pushes particles aside, within 140 px.
   vec2 d=pos-uPointer.xy; float r=length(d);
@@ -110,7 +154,7 @@ void main(){
 
   vel+=acc*uDt;
   // Activation: ink where the recording spikes or the pointer touched, tissue at rest.
-  float act=max(uForm*smoothstep(0.15,0.8,abs(s)), push);
+  float act=max(fw*smoothstep(0.15,0.8,abs(s)), push);
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
   if(uSnap>0.5){ vel=vec2(0.0); z=0.0; }
   gl_FragColor=vec4(vel,z,1.0);
@@ -123,22 +167,22 @@ void main(){
   vec2 uv=gl_FragCoord.xy/resolution.xy;
   vec4 P=texture2D(texPos,uv); vec4 V=texture2D(texVel,uv); vec4 H=texture2D(uHome,uv);
   vec2 pos=P.xy+V.xy*uDt;
+  float fw=formWeight(H,P.w,uForm);
   // Swarm particles move rigidly with their parallax homes, so scrolling never stretches them.
-  pos.y-=uScrollDy*0.3*(1.0-uForm);
-  if(uForm<0.5){
+  pos.y-=uScrollDy*0.3*(1.0-fw);
+  if(fw<0.5){
     float span=uViewport.y+2.0*WRAP_M;
     // Keep each particle within half a band of its home: one wrap, never a band that hops every frame.
     float hy=swarmHome(H).y;
     pos.y=hy+mod(pos.y-hy+0.5*span,span)-0.5*span;
   }
   // Once the trace formation has settled, lock particles to the line: no spring lag while it plays.
-  float lock=smoothstep(0.85,1.0,uForm);
-  if(lock>0.0){
-    float s; vec2 target=traceTarget(H,P.w,s);
-    pos=mix(pos,target,lock);
-  }
+  float lock=smoothstep(0.85,1.0,fw);
+  float s, depth; vec2 target=heroTarget(H,P.w,uv,s,depth);
+  if(lock>0.0) pos=mix(pos,target,lock);
   if(uSnap>0.5) pos=swarmHome(H);
-  gl_FragColor=vec4(pos,P.z,P.w);
+  // z carries the hand's depth to the point shader (near dots larger and darker).
+  gl_FragColor=vec4(pos,depth*fw,P.w);
 }
 `;
 
@@ -149,18 +193,30 @@ uniform sampler2D uHome;
 uniform vec2 uViewport;
 uniform float uPixelRatio;
 uniform float uForm;
+uniform float uHandOn;
+const float HAND_SPLIT=0.6;
 attribute vec2 ref;
 varying float vAct;
 varying vec2 vScreen;
 varying float vRank;
 varying float vSeed;
+varying float vRecruit;
+varying float vDepth;
+bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
+float traceU(vec4 h){ return uHandOn>0.5 ? h.w/HAND_SPLIT : h.w; }
+float formWeight(vec4 h, float seed, float form){
+  float st=isHand(h) ? 0.78+0.2*fract(seed*7.31) : traceU(h)*0.72+0.06*fract(seed*3.7);
+  float f=clamp((form-st*0.7)/0.3,0.0,1.0);
+  return f*f*(3.0-2.0*f);
+}
 void main(){
   vec4 P=texture2D(texPos,ref); vec4 V=texture2D(texVel,ref); vec4 H=texture2D(uHome,ref);
   vec2 ndc=vec2(P.x/uViewport.x*2.0-1.0, 1.0-P.y/uViewport.y*2.0);
   gl_Position=vec4(ndc,0.0,1.0);
-  vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w;
-  // Swarm dots 1.2-2.2 px; recruited dots swell a little as they join the trace.
-  gl_PointSize=(mix(1.2,2.2,H.z*H.z)+uForm*0.9)*uPixelRatio;
+  vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w; vDepth=P.z;
+  vRecruit=formWeight(H,P.w,uForm);
+  // Swarm dots 1.4-2.5 px; recruited dots swell a little; on the hand, nearer dots are larger.
+  gl_PointSize=(mix(1.4,2.5,H.z*H.z)+vRecruit*0.9)*(1.0+0.25*P.z)*uPixelRatio;
 }
 `;
 
@@ -178,6 +234,8 @@ varying float vAct;
 varying vec2 vScreen;
 varying float vRank;
 varying float vSeed;
+varying float vRecruit;
+varying float vDepth;
 float hash(float n){ return fract(sin(n)*43758.5453); }
 void main(){
   vec2 c=gl_PointCoord-0.5; float r2=dot(c,c);
@@ -190,11 +248,13 @@ void main(){
 
   // Recruitment by darkness: resting dots are tissue, joining the trace stains them ink,
   // and spikes in the recording (or the visitor's pointer) push them darker still.
-  float recruit=clamp(max(uForm,vAct),0.0,1.0);
-  vec3 rest=mix(uTissue,uInkDim,0.12+0.3*vRank*vRank);
+  float recruit=clamp(max(vRecruit,vAct),0.0,1.0);
+  vec3 rest=mix(uTissue,uInkDim,0.3+0.35*vRank*vRank);
   vec3 col=mix(rest,uInk,recruit);
   col=mix(col,uDrift,uBleed*recruit);
-  float a=mix(mix(0.6,0.9,vRank), mix(0.8,0.95,vAct), recruit);
+  float a=mix(mix(0.75,0.95,vRank), mix(0.8,0.95,vAct), recruit);
+  // Far side of the hand is paler, so it reads as a solid turning in space.
+  a*=clamp(0.78+0.45*vDepth,0.4,1.0);
 
   float mask=texture2D(uMask,vec2(vScreen.x,1.0-vScreen.y)).r;
   a*=edge*(1.0-uMaskStrength*mask)*uFade;

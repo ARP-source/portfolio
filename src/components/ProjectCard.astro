@@ -1,7 +1,7 @@
 ---
 import type { CollectionEntry } from 'astro:content';
 interface Props { project: CollectionEntry<'projects'>; index: number }
-const { project } = Astro.props;
+const { project, index } = Astro.props;
 const p = project.data;
 const status = { shipped: '', 'in-progress': 'in progress', prototype: 'prototype' }[p.status];
 // Dates may still carry a TODO; the card shows only the finished part.
@@ -10,7 +10,7 @@ const km = p.keyMetric;
 const result = km ? `${km.label[0]!.toUpperCase()}${km.label.slice(1)}: ${km.value}${km.unit ? ` ${km.unit}` : ''}` : '';
 ---
 
-<article class="card" aria-labelledby={`card-${project.id}`} data-thread-target={project.id}>
+<article class="card" aria-labelledby={`card-${project.id}`} data-thread-target={project.id} data-field-release={index === 2 ? '' : undefined}>
   <div class="top">
     <h3 id={`card-${project.id}`}><a href={`/work/${project.id}`}>{p.title}</a></h3>
     <p class="when">{when}{status && <>, {status}</>}</p>

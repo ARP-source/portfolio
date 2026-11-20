@@ -30,6 +30,8 @@ import { BONES, POSES, SEQUENCE, blendPose, handWorld, loadHand, poseBones, proj
 /** Formations implemented in v1. The rest of the contract arrives in later phases. */
 const FORM_VALUE: Partial<Record<Formation, number>> = { swarm: 0, trace: 1 };
 const MASK_SCALE = 1 / 8;
+/** Texture height cap for the page-sized mask (very long pages are squeezed vertically). */
+const MASK_MAX = 4096;
 /**
  * How particles meet text (?mask= to compare):
  * box  - fade inside padded element boxes (v1)
@@ -106,7 +108,7 @@ export class Field {
   #camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   #sim: Sim | null = null;
   #traceTex: DataTexture;
-  #mask: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; tex: CanvasTexture; rects: DOMRect[]; dirty: boolean };
+  #mask: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; tex: CanvasTexture; rects: DOMRect[]; dirty: boolean; size: [number, number] };
   #shared: Record<string, IUniform>;
   #vw = innerWidth;
   #vh = innerHeight;
@@ -191,7 +193,7 @@ export class Field {
     const tex = new CanvasTexture(mc);
     tex.minFilter = tex.magFilter = LinearFilter;
     tex.generateMipmaps = false;
-    this.#mask = { canvas: mc, ctx, tex, rects: [], dirty: true };
+    this.#mask = { canvas: mc, ctx, tex, rects: [], dirty: true, size: [1, 1] };
 
     // Raw sRGB palette values: ShaderMaterial does no colour conversion, so the dots match the CSS exactly.
     const c = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
@@ -226,6 +228,7 @@ export class Field {
       uBones: { value: this.#bones },
       uHandLocal: { value: null },
       uMask: { value: tex },
+      uMaskView: { value: [0, 0, 1, 1] },
       uFade: { value: 0 },
       uDemo: { value: [0, 0, 0, 0] },
       uDemoRect: { value: [0, -1000, 1, 1] },
@@ -591,6 +594,7 @@ export class Field {
   #render(): void {
     const s = this.#sim!;
     if (this.#mask.dirty) this.#drawMask();
+    this.#shared.uMaskView!.value = [scrollX, scrollY, this.#mask.size[0], this.#mask.size[1]];
     s.material.uniforms.texPos!.value = s.gpu.getCurrentRenderTarget(s.pos).texture as Texture;
     s.material.uniforms.texVel!.value = s.gpu.getCurrentRenderTarget(s.vel).texture as Texture;
     this.#shared.uFade!.value = this.#fade;
@@ -879,9 +883,6 @@ export class Field {
     this.#renderer.setSize(this.#vw, this.#vh, true);
     this.#shared.uViewport!.value = [this.#vw, this.#vh];
     this.#shared.uPixelRatio!.value = pr;
-    const m = this.#mask;
-    m.canvas.width = Math.max(1, Math.round(this.#vw * MASK_SCALE));
-    m.canvas.height = Math.max(1, Math.round(this.#vh * MASK_SCALE));
     this.#measureText();
   };
 
@@ -905,27 +906,25 @@ export class Field {
       }
     }
     this.#mask.rects = rects;
-    this.#mask.dirty = true;
+    // The mask covers the whole page, drawn once in page coordinates; the shader adds the scroll
+    // offset, so scrolling never redraws or re-uploads it.
+    const m = this.#mask, de = document.documentElement;
+    const w = Math.max(this.#vw, de.scrollWidth), h = Math.max(this.#vh, de.scrollHeight);
+    m.canvas.width = Math.max(1, Math.round(w * MASK_SCALE));
+    m.canvas.height = Math.max(1, Math.min(MASK_MAX, Math.round(h * MASK_SCALE)));
+    m.size = [w, h];
+    m.dirty = true;
   }
 
   #drawMask(): void {
-    const { ctx, canvas, rects, tex } = this.#mask;
-    const sy = scrollY, sx = scrollX;
+    const { ctx, canvas, rects, tex, size } = this.#mask;
+    const kx = canvas.width / size[0], ky = canvas.height / size[1];
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const mode = MASK_MODES[maskMode()];
     ctx.filter = `blur(${mode.blur}px)`;
     ctx.fillStyle = '#fff';
     const pad = mode.pad;
-    for (const r of rects) {
-      const y = r.y - sy;
-      if (y + r.height < -pad || y > this.#vh + pad) continue;
-      ctx.fillRect(
-        (r.x - sx - pad) * MASK_SCALE,
-        (y - pad) * MASK_SCALE,
-        (r.width + 2 * pad) * MASK_SCALE,
-        (r.height + 2 * pad) * MASK_SCALE,
-      );
-    }
+    for (const r of rects) ctx.fillRect((r.x - pad) * kx, (r.y - pad) * ky, (r.width + 2 * pad) * kx, (r.height + 2 * pad) * ky);
     ctx.filter = 'none';
     tex.needsUpdate = true;
     this.#mask.dirty = false;
@@ -957,7 +956,6 @@ export class Field {
       const y = scrollY;
       this.#scrollDy += y - this.#scrollY;
       this.#scrollY = y;
-      this.#mask.dirty = true;
       if (this.#o.reducedMotion) {
         const want = this.#wantHero();
         if (want !== null && (want ? 1 : 0) !== this.#formTo()) this.setFormation(want ? 'trace' : 'swarm');

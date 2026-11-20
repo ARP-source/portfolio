@@ -422,11 +422,14 @@ varying float vRank;
 varying float vSeed;
 varying float vRecruit;
 varying float vDepth;
+uniform vec4 uMaskView;     // scroll x, y and the page's size, CSS px: where this dot sits on the page mask
+varying vec2 vMaskUv;
 void main(){
   vec4 P=texture2D(texPos,ref); vec4 V=texture2D(texVel,ref); vec4 H=texture2D(uHome,ref);
   vec2 ndc=vec2(P.x/uViewport.x*2.0-1.0, 1.0-P.y/uViewport.y*2.0);
   gl_Position=vec4(ndc,0.0,1.0);
   vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w; vDepth=P.z;
+  vMaskUv=vec2((P.x+uMaskView.x)/uMaskView.z, 1.0-(P.y+uMaskView.y)/uMaskView.w);
   float dw=demoWeight(H,P.w);
   vRecruit=max(formWeightV(H,P.w,uForm,V),dw*demoInk(H,P.w));
   // Swarm dots 2-3 px, big enough to read as ink; recruited dots swell a little; on the hand,
@@ -451,6 +454,7 @@ varying float vRank;
 varying float vSeed;
 varying float vRecruit;
 varying float vDepth;
+varying vec2 vMaskUv;
 float hash(float n){ return fract(sin(n)*43758.5453); }
 void main(){
   vec2 c=gl_PointCoord-0.5; float r2=dot(c,c);
@@ -471,7 +475,7 @@ void main(){
   // Far side of the hand is paler, so it reads as a solid turning in space.
   a*=clamp(0.78+0.45*vDepth,0.4,1.0);
 
-  float mask=texture2D(uMask,vec2(vScreen.x,1.0-vScreen.y)).r;
+  float mask=texture2D(uMask,vMaskUv).r;
   a*=edge*(1.0-uMaskStrength*mask)*uFade;
   gl_FragColor=vec4(col*a,a);
 }

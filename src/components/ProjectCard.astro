@@ -1,0 +1,43 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import Sparkline from './Sparkline.astro';
+interface Props { project: CollectionEntry<'projects'>; index: number }
+const { project, index } = Astro.props;
+const p = project.data;
+const status = { shipped: '', 'in-progress': 'in progress', prototype: 'prototype' }[p.status];
+const when = p.dates;
+const km = p.keyMetric;
+const label = km ? `${km.label[0]!.toUpperCase()}${km.label.slice(1)} · ` : '';
+// The field draws one line per card (Phase 5): its series when it has one, else under its result,
+// else under its title. Its page draws the same project's line, so the dots carry on there.
+const line = p.sparkline ? 'spark' : km ? 'result' : 'title';
+---
+
+<article class="card" aria-labelledby={`card-${project.id}`} data-thread-target={project.id} data-field-release={index === 2 ? '' : undefined}>
+  <div class="top">
+    <h3 id={`card-${project.id}`} style={`view-transition-name: title-${project.id}`}><a href={`/work/${project.id}`} data-thread-line={line === 'title' ? project.id : undefined}>{p.title}</a></h3>
+    <p class="when">{when}{status && <>, {status}</>}</p>
+  </div>
+  <p class="one">{p.oneLiner}</p>
+  {p.sparkline && <Sparkline slug={project.id} {...p.sparkline} thread="card" />}
+  {km && <p class="result">{label}<span data-thread-line={line === 'result' ? project.id : undefined}>{km.value}</span>{km.unit && ` ${km.unit}`}</p>}
+  <p class="more">
+    <a href={`/work/${project.id}`}>Write-up</a>
+    {p.links.repo && <a href={p.links.repo}>Code</a>}
+    {p.links.demo && <a href={p.links.demo}>Live</a>}
+  </p>
+</article>
+
+<style>
+  .card { padding-block: 1.5rem; border-top: 1px solid var(--tissue-faint); }
+  .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.25rem 1.5rem; }
+  h3 { font-size: 1.45rem; }
+  h3 a { color: var(--ink); text-decoration: none; }
+  h3 a:hover { text-decoration: underline; text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+  .when { margin: 0; color: var(--ink-dim); font-size: 0.95rem; }
+  .one { max-width: 40rem; color: var(--ink-dim); margin: 0.5rem 0 0; }
+  .result { margin: 0.5rem 0 0; font-size: 0.95rem; }
+  .card :global(.spark) { margin-top: 1rem; }
+  .more { display: flex; gap: 1.25rem; margin: 0.75rem 0 0; font-size: 0.95rem; }
+  .more a { padding-block: 0.25rem; }
+</style>

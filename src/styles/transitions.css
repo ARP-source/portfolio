@@ -1,0 +1,45 @@
+/*
+ * Moving between pages (Phase 5). Cross-document View Transitions: the page cross-fades, and a
+ * project's title and graph glide from its card to the top of its page and back. Browsers without
+ * them (Firefox today) simply load the next page. Once the field is running, nav.ts swaps pages
+ * in place inside a same-document transition with the same names, and the field keeps running.
+ */
+@view-transition {
+  navigation: auto;
+}
+::view-transition-group(*) {
+  animation-duration: calc(var(--dur-ui) * 1.6);
+  animation-timing-function: var(--ease-spring);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: calc(var(--dur-ui) * 0.7);
+}
+/* In-place page changes: the particles are live throughout, never a frozen picture fading out. */
+html[data-nav] canvas.field {
+  view-transition-name: field;
+}
+::view-transition-old(field) {
+  display: none;
+}
+::view-transition-group(field),
+::view-transition-new(field) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  @view-transition {
+    navigation: none;
+  }
+}
+
+/* While the field's dots draw a project's line, the SVG line steps aside, as the hero's does. */
+html[data-field='on'] svg[data-threaded] .trace {
+  opacity: 0;
+}
+.spark .trace,
+.spark .end {
+  transition: opacity var(--dur-ui) var(--ease-spring);
+}
+html[data-field='on'] svg[data-threaded] .end {
+  opacity: 0.4;
+}

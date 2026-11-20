@@ -1,0 +1,17 @@
+---
+import { site } from '../site.config';
+---
+
+<section id="contact" class="wrap section" aria-labelledby="contact-title" data-section="contact">
+  <h2 id="contact-title">Contact</h2>
+  <p>I'm looking for internships and research lab positions.</p>
+  <ul class="mono links">
+    <li><a href={site.github}>github.com/ARP-source</a></li>
+    {site.email && <li><a href={`mailto:${site.email}`}>{site.email}</a></li>}
+    {site.linkedin && <li><a href={site.linkedin}>LinkedIn</a></li>}
+  </ul>
+</section>
+
+<style>
+  .links { list-style: none; padding: 0; margin: 1.5rem 0; font-size: 1rem; }
+</style>

@@ -1,0 +1,24 @@
+---
+import { getCollection } from 'astro:content';
+import { orderings } from '../site.config';
+import ProjectCard from './ProjectCard.astro';
+interface Props { order: keyof typeof orderings }
+const { order } = Astro.props;
+const all = await getCollection('projects');
+const byId = new Map(all.map((p) => [p.id, p]));
+const missing = orderings[order].filter((id) => !byId.has(id));
+if (missing.length) throw new Error(`ordering "${order}" names unknown projects: ${missing.join(', ')}`);
+const projects = orderings[order].map((id) => byId.get(id)!);
+---
+
+<section id="work" class="wrap" aria-labelledby="work-title" data-section="work">
+  <h2 id="work-title">Projects</h2>
+  <div class="list">
+    {projects.map((project, i) => <ProjectCard project={project} index={i} />)}
+  </div>
+</section>
+
+<style>
+  #work { padding-top: 5rem; }
+  h2 { margin-bottom: 1.5rem; }
+</style>

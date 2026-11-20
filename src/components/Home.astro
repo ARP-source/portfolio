@@ -1,0 +1,18 @@
+---
+// One page body, three orderings: /, /neuro and /swe share every component and every word except the intro.
+// Projects come straight after the hero: it's what someone hiring looks for first.
+import Hero from './Hero.astro';
+import Demo from './Demo.astro';
+import WorkList from './WorkList.astro';
+import About from './About.astro';
+import Contact from './Contact.astro';
+import { intros, orderings } from '../site.config';
+interface Props { view: keyof typeof orderings }
+const { view } = Astro.props;
+---
+
+<Hero intro={intros[view]} />
+<WorkList order={view} />
+<Demo />
+<About />
+<Contact />

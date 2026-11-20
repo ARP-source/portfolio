@@ -1,0 +1,39 @@
+---
+import { site } from '../site.config';
+
+// Written by CI after Lighthouse runs against the built site (scripts/lighthouse.mjs).
+// Absent locally or before the first CI run: then the footer shows no score at all.
+const found = import.meta.glob<{ default: LighthouseResult }>('../data/lighthouse.json', { eager: true });
+type Scores = { performance: number; accessibility: number; bestPractices: number; seo: number };
+type LighthouseResult = {
+  measuredAt: string;
+  url: string;
+  lighthouse: string;
+  mobile: Scores;
+  desktop: Scores;
+  field?: { url: string; mobile: Scores; desktop: Scores };
+};
+const lh = Object.values(found)[0]?.default;
+---
+
+<footer class="site-footer wrap">
+  <hr class="rule" />
+  <div class="row">
+    <p>{site.name}, {new Date().getFullYear()}. <a href="/changelog">Changelog</a></p>
+    {
+      lh && (
+        <p class="lh">
+          Lighthouse in CI on {lh.measuredAt.slice(0, 10)} scored performance {lh.mobile.performance} on mobile and{' '}
+          {lh.desktop.performance} on desktop, accessibility {lh.mobile.accessibility}{lh.field && <>. With the particles forced on in software rendering, performance is {lh.field.mobile.performance} and {lh.field.desktop.performance}</>}.
+        </p>
+      )
+    }
+  </div>
+</footer>
+
+<style>
+  .site-footer { padding-block: 4rem 3rem; font-size: 0.85rem; color: var(--ink-dim); }
+  .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem 2rem; }
+  .row p { margin: 0; }
+  .lh { max-width: 34rem; }
+</style>

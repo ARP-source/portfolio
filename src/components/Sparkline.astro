@@ -1,0 +1,39 @@
+---
+// Inline SVG, no chart library. Same stroke style as the hero trace, so `thread` particles can land on it.
+interface Props {
+  slug: string;
+  x: number[];
+  y: number[];
+  label: string;
+  unit: string;
+  size?: 'card' | 'header';
+  /** Mark it as this project's thread line (see thread-line.ts); home: the line of its own page. */
+  thread?: 'card' | 'home';
+}
+const { slug, x, y, label, unit, size = 'card', thread } = Astro.props;
+const W = 160, H = 40, P = 3;
+const [x0, x1] = [Math.min(...x), Math.max(...x)];
+const [y0, y1] = [Math.min(...y), Math.max(...y)];
+const px = (v: number) => P + ((v - x0) / (x1 - x0 || 1)) * (W - 2 * P);
+const py = (v: number) => H - P - ((v - y0) / (y1 - y0 || 1)) * (H - 2 * P);
+const d = x.map((xv, i) => `${i ? 'L' : 'M'}${px(xv).toFixed(1)} ${py(y[i]!).toFixed(1)}`).join('');
+const first = y[0]!, last = y[y.length - 1]!;
+const desc = `${label}, ${first}${unit} at ${x0} to ${last}${unit} at ${x1}`;
+---
+
+<figure class={`spark spark--${size}`} style={`view-transition-name: spark-${slug}`}>
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={desc} data-thread-line={thread && slug} data-thread-home={thread === 'home' ? '' : undefined}>
+    <path class="trace" d={d}></path>
+    <circle cx={px(x1)} cy={py(last)} r="2" class="end"></circle>
+  </svg>
+  <figcaption class="meta">{first}{unit} → <span>{last}{unit}</span> · {label}</figcaption>
+</figure>
+
+<style>
+  .spark { margin: 0; }
+  svg { display: block; overflow: visible; }
+  .spark--card svg { width: 10rem; height: 2.5rem; }
+  .spark--header svg { width: min(100%, 28rem); height: 6rem; }
+  .end { fill: var(--ink); }
+  figcaption { margin-top: 0.4rem; }
+</style>

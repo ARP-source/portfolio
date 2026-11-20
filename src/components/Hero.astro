@@ -1,0 +1,39 @@
+---
+import { site } from '../site.config';
+import HeroTrace from './HeroTrace.astro';
+interface Props { intro: string }
+const { intro } = Astro.props;
+---
+
+<section class="hero wrap" aria-labelledby="hero-title" data-section="hero">
+  <h1 id="hero-title">{site.name}</h1>
+  <div class="col">
+    <p class="lede">
+      I'm a student at San José State. I write software for muscle and brain signals, mostly the part that comes after
+      the demo works. The signal drifts, the model trained last week gets worse, and something has to notice and adapt.
+    </p>
+    <p class="intro">{intro}</p>
+    <p class="links">
+      <a href={site.github}>GitHub</a>
+      {site.email && <a href={`mailto:${site.email}`}>Email</a>}
+      {site.linkedin && <a href={site.linkedin}>LinkedIn</a>}
+      <a href="#work">Projects</a>
+    </p>
+  </div>
+  <HeroTrace />
+  <!-- Where the particle hand forms. Empty without the field; hidden where the column has no room. -->
+  <div class="hero-hand" aria-hidden="true"></div>
+</section>
+
+<style>
+  .hero { position: relative; padding-block: clamp(2.5rem, 1.5rem + 5vw, 6rem) 2rem; }
+  .hero-hand { display: none; position: absolute; pointer-events: none; }
+  @media (min-width: 68rem) {
+    .hero-hand { display: block; right: 0; top: clamp(7rem, 4rem + 6vw, 11rem); width: min(24rem, 30%); height: 30rem; }
+  }
+  h1 { margin-bottom: 1.5rem; }
+  .lede { font-size: clamp(1.2rem, 1.05rem + 0.6vw, 1.45rem); line-height: 1.45; color: var(--ink); }
+  .intro { color: var(--ink-dim); }
+  .links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 1.5rem 0 3rem; }
+  .links a { padding-block: 0.3rem; }
+</style>

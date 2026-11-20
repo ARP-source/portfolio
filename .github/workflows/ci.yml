@@ -1,0 +1,59 @@
+name: build, measure, deploy
+
+# The footer's Lighthouse numbers are real: this job builds the site, measures it, writes
+# src/data/lighthouse.json, rebuilds with those numbers, then deploys that exact output to Vercel.
+on:
+  push:
+    branches: [master, signal]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    runs-on: ubuntu-24.04
+    env:
+      CHROME_PATH: /usr/bin/google-chrome
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.x
+          cache: npm
+      - run: npm ci
+      - run: npx astro check
+      - run: npm run build
+      - run: npm run budget
+
+      - name: Lighthouse (median of 3, mobile and desktop) with quality gate
+        run: |
+          npx astro preview --port 4321 &
+          for i in $(seq 30); do curl -sf http://localhost:4321/ >/dev/null && break; sleep 1; done
+          LH_PATHS=/,/neuro,/swe,/work/warden,/work/edge-decoder-drift,/changelog LH_ASSERT=1 npm run lighthouse
+          # Informational: the same home page with the particle field forced on (SwiftShader software GL).
+          # Software GL makes every frame CPU-bound, so this is a pessimistic number; it is reported, not gated.
+          LH_GL=1 LH_PATHS='/?tier=mid' LH_MERGE_AS=field npm run lighthouse
+          kill %1
+
+      - name: Rebuild with measured numbers
+        run: npm run build && npm run budget
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: |
+            dist
+            src/data/lighthouse.json
+
+      - name: Deploy to Vercel
+        if: ${{ github.event_name == 'push' && env.VERCEL_TOKEN != '' }}
+        run: |
+          cp vercel.json dist/vercel.json
+          PROD=""
+          if [ "${GITHUB_REF_NAME}" = "master" ]; then PROD="--prod"; fi
+          npx vercel@66.5.0 deploy dist $PROD --yes --token "$VERCEL_TOKEN"

@@ -1,0 +1,23 @@
+---
+interface Props {
+  metric: { label: string; value: string; unit?: string | undefined; source: string };
+  size?: 'card' | 'header';
+  /** The project's slug, when its thread is drawn under the value on this page. */
+  thread?: string | undefined;
+}
+const { metric, size = 'card', thread } = Astro.props;
+---
+
+<p class={`metric metric--${size} mono`}>
+  <span class="value" data-thread-line={thread} data-thread-home={thread ? '' : undefined}>{metric.value}</span>
+  {metric.unit && <span class="unit">{metric.unit}</span>}
+  <span class="label meta">{metric.label} · from {metric.source}</span>
+</p>
+
+<style>
+  .metric { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.6rem; }
+  .value { color: var(--ink); font-size: 1.6rem; font-weight: 500; letter-spacing: -0.02em; }
+  .metric--header .value { font-size: clamp(2.2rem, 1.6rem + 2vw, 3.4rem); }
+  .unit { color: var(--ink-dim); font-size: 0.85rem; }
+  .label { flex-basis: 100%; }
+</style>

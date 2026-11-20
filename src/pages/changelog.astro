@@ -1,0 +1,33 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+// Newest first; several versions can share a day, so the version breaks the tie.
+const entries = (await getCollection('changelog')).sort(
+  (a, b) => +b.data.date - +a.data.date || b.data.version.localeCompare(a.data.version, 'en', { numeric: true }),
+);
+const rendered = await Promise.all(entries.map(async (e) => ({ e, Content: (await render(e)).Content })));
+---
+
+<Base title="Changelog" description="Dated version history of this site.">
+  <section class="wrap" aria-labelledby="cl-title">
+    <h1 id="cl-title">Changelog</h1>
+    <p class="meta lead">This site's own version history, newest first.</p>
+    {
+      rendered.map(({ e, Content }) => (
+        <article class="entry">
+          <p class="meta">
+            <time datetime={e.data.date.toISOString().slice(0, 10)}>{e.data.date.toISOString().slice(0, 10)}</time> · v{e.data.version}
+          </p>
+          <h2>{e.data.title}</h2>
+          <div class="col"><Content /></div>
+        </article>
+      ))
+    }
+  </section>
+</Base>
+
+<style>
+  .lead { margin: 1rem 0 3rem; }
+  .entry { border-top: 1px solid var(--tissue-faint); padding-block: 1.5rem 2rem; }
+  h2 { font-size: 1.6rem; margin: 0.25rem 0 1rem; }
+</style>

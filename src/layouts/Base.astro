@@ -1,0 +1,68 @@
+---
+import { Font } from 'astro:assets';
+import '../styles/global.css';
+import '../styles/transitions.css';
+import { tokensCss } from '../tokens/tokens';
+import { site } from '../site.config';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const { title, description = site.description } = Astro.props;
+const fullTitle = title ? `${title} · ${site.name}` : `${site.name} · ${site.thesis}`;
+// Vercel serves clean URLs (/work/warden), while the build writes /work/warden.html.
+const path = Astro.url.pathname.replace(/\.html$/, '').replace(/\/index$/, '/');
+const notFound = path === '/404';
+const canonical = site.url && !notFound ? new URL(path, site.url).href : undefined;
+const ogImage = site.url ? new URL('/og.jpg', site.url).href : undefined;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#ECE8DE" />
+    <meta name="color-scheme" content="light" />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {notFound && <meta name="robots" content="noindex" />}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    {canonical && <meta property="og:url" content={canonical} />}
+    {
+      ogImage && (
+        <>
+          <meta property="og:image" content={ogImage} />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:image:alt" content={`${site.name}: ${site.thesis} Under it, a line of real forearm EMG.`} />
+          <meta name="twitter:card" content="summary_large_image" />
+        </>
+      )
+    }
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Fetch a project page while the pointer rests on its link, so opening it doesn't wait on the network. -->
+    <script is:inline type="speculationrules">{"prefetch":[{"where":{"href_matches":"/work/*"},"eagerness":"moderate"}]}</script>
+    <style set:html={tokensCss()}></style>
+    <Font cssVariable="--font-display" preload={[{ style: 'normal' }]} />
+    <Font cssVariable="--font-mono" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <Header />
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+    <Footer />
+    <script>
+      import '../scripts/boot';
+    </script>
+  </body>
+</html>

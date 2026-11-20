@@ -37,7 +37,8 @@ type MaskMode = 'box' | 'line' | 'halo';
 const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number; lines: boolean }> = {
   box: { strength: 0.85, pad: 10, blur: 2, lines: false },
   line: { strength: 0.9, pad: 6, blur: 3, lines: true },
-  halo: { strength: 0.55, pad: 4, blur: 3, lines: true },
+  // Under a line of text the dots fade to about 12 %; the CSS paper halo does the rest.
+  halo: { strength: 0.88, pad: 4, blur: 3, lines: true },
 };
 const PARALLAX = 0.3, WRAP_M = 40;
 const TEXT_SELECTOR =
@@ -83,6 +84,8 @@ export class Field {
   #scrollY = scrollY;
   #scrollDy = 0;
   #form = { from: 0, to: 0, start: 0, value: 0 };
+  #bleed = 0;
+  #bleedTarget = 0;
   #pointer = { x: -1e4, y: -1e4, strength: 0, lastMove: 0 };
   #probe: number[] = [];
   #probeDone = false;
@@ -98,7 +101,8 @@ export class Field {
       canvas: o.canvas,
       antialias: false,
       alpha: true,
-      premultipliedAlpha: false,
+      // Premultiplied: on a light page, straight alpha leaves dark fringes where dots overlap.
+      premultipliedAlpha: true,
       powerPreference: 'high-performance',
     });
     this.#renderer.setClearColor(0x000000, 0);
@@ -138,6 +142,8 @@ export class Field {
       uTissue: { value: c(palette.tissue) },
       uInk: { value: c(palette.ink) },
       uDrift: { value: c(palette.drift) },
+      uInkDim: { value: c(palette.inkDim) },
+      uBleed: { value: 0 },
       uMask: { value: tex },
       uFade: { value: 0 },
     };
@@ -205,6 +211,15 @@ export class Field {
       this.#settle(90);
       this.#renderOnce();
     }
+  }
+
+  /**
+   * Drift stain: 0 is clean ink, 1 is fully bled into drift blue. Callers pass the measured
+   * accuracy loss (normalised), so the amount of blue tracks the amount of drift; reinking is
+   * just setting it back toward 0, eased so it reads as ink returning, not a switch.
+   */
+  setBleed(amount: number): void {
+    this.#bleedTarget = Math.min(1, Math.max(0, amount));
   }
 
   dispose(): void {
@@ -297,6 +312,7 @@ export class Field {
       fragmentShader: pointsFragment,
       uniforms: { ...this.#shared, uHome: { value: home }, texPos: { value: null }, texVel: { value: null } },
       transparent: true,
+      premultipliedAlpha: true,
       depthTest: false,
       depthWrite: false,
     });
@@ -327,6 +343,8 @@ export class Field {
     u.uScrollDy!.value = this.#scrollDy;
     u.uScroll!.value = this.#scrollY;
     u.uPhase!.value = playbackPhase();
+    this.#bleed += (this.#bleedTarget - this.#bleed) * (1 - Math.exp(-dt * 2.5));
+    u.uBleed!.value = this.#bleed;
     this.#scrollDy = 0;
     s.gpu.compute();
   }

@@ -73,6 +73,9 @@ async function start(): Promise<void> {
     info.stats = field.stats;
     info.reason = caps.reason;
     await field.start();
+    // ?bleed=0..1 previews the drift stain until the demo drives it with measured accuracy loss.
+    const bleed = Number(new URLSearchParams(location.search).get('bleed'));
+    if (bleed > 0) field.setBleed(bleed);
   } catch (e) {
     fallback(`init failed: ${(e as Error).message}`);
     return;

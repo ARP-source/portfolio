@@ -148,36 +148,56 @@ uniform sampler2D texVel;
 uniform sampler2D uHome;
 uniform vec2 uViewport;
 uniform float uPixelRatio;
+uniform float uForm;
 attribute vec2 ref;
 varying float vAct;
 varying vec2 vScreen;
 varying float vRank;
+varying float vSeed;
 void main(){
   vec4 P=texture2D(texPos,ref); vec4 V=texture2D(texVel,ref); vec4 H=texture2D(uHome,ref);
   vec2 ndc=vec2(P.x/uViewport.x*2.0-1.0, 1.0-P.y/uViewport.y*2.0);
   gl_Position=vec4(ndc,0.0,1.0);
-  vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport;
-  gl_PointSize=mix(1.4,2.8,H.z*H.z)*uPixelRatio;
+  vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w;
+  // Swarm dots 1.2-2.2 px; recruited dots swell a little as they join the trace.
+  gl_PointSize=(mix(1.2,2.2,H.z*H.z)+uForm*0.9)*uPixelRatio;
 }
 `;
 
 export const pointsFragment = /* glsl */ `
 uniform vec3 uTissue;
 uniform vec3 uInk;
+uniform vec3 uInkDim;
 uniform vec3 uDrift;
+uniform float uBleed;      // 0 clean ink .. 1 bled into drift blue
+uniform float uForm;       // 0 swarm .. 1 trace
 uniform sampler2D uMask;   // 1 where text sits, blurred
 uniform float uFade;       // global fade-in, 0..1
 uniform float uMaskStrength;
 varying float vAct;
 varying vec2 vScreen;
 varying float vRank;
+varying float vSeed;
+float hash(float n){ return fract(sin(n)*43758.5453); }
 void main(){
   vec2 c=gl_PointCoord-0.5; float r2=dot(c,c);
-  if(r2>0.25) discard;
-  vec3 col=mix(uTissue,uInk,clamp(vAct,0.0,1.0));
-  float edge=smoothstep(0.25,0.12,r2);
+  // Ink dot: the edge wobbles with angle, seeded per particle, like a nib touching damp paper.
+  float ang=atan(c.y,c.x);
+  float wob=0.9+0.1*sin(ang*3.0+vSeed*40.0)*hash(vSeed*7.1)+0.06*sin(ang*5.0+vSeed*91.0);
+  float rr=0.25*wob*wob;
+  if(r2>rr) discard;
+  float edge=smoothstep(rr,rr*0.45,r2);
+
+  // Recruitment by darkness: resting dots are tissue, joining the trace stains them ink,
+  // and spikes in the recording (or the visitor's pointer) push them darker still.
+  float recruit=clamp(max(uForm,vAct),0.0,1.0);
+  vec3 rest=mix(uTissue,uInkDim,0.12+0.3*vRank*vRank);
+  vec3 col=mix(rest,uInk,recruit);
+  col=mix(col,uDrift,uBleed*recruit);
+  float a=mix(mix(0.6,0.9,vRank), mix(0.8,0.95,vAct), recruit);
+
   float mask=texture2D(uMask,vec2(vScreen.x,1.0-vScreen.y)).r;
-  float a=edge*mix(0.5,0.9,vRank)*(1.0-uMaskStrength*mask)*uFade;
-  gl_FragColor=vec4(col,a);
+  a*=edge*(1.0-uMaskStrength*mask)*uFade;
+  gl_FragColor=vec4(col*a,a);
 }
 `;

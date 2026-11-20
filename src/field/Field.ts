@@ -158,6 +158,8 @@ export class Field {
   #probeDone = false;
   #probeAt = 2.5;
   #stepped = false;
+  /** A slow probe at mid gets one more look before the field gives up: a load hitch is not a slow GPU. */
+  #retried = false;
   #fade = 0;
   #off: Array<() => void> = [];
   #disposed = false;
@@ -640,6 +642,11 @@ export class Field {
       if (this.stats.tier === 'high') {
         this.#stepped = true;
         this.#rebuild(TIER_SIZE.mid, 'mid', `fps probe ${fps} at high`);
+      } else if (!this.#retried) {
+        this.#retried = true;
+        this.#probe = [];
+        this.#probeDone = false;
+        this.#probeAt = this.#time + 2;
       } else {
         this.#o.onFallback(`measured ${fps} fps at ${this.stats.particles} particles`);
       }

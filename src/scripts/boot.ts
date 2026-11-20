@@ -58,6 +58,7 @@ async function start(): Promise<void> {
     delete root.dataset.field;
     info.state = 'static';
     info.reason = reason;
+    console.warn(`field off: ${reason}`);
     bus.emit('field:tier', { tier: 'static', particles: 0, reason });
   };
   try {
@@ -98,7 +99,12 @@ function showFps(): void {
   document.body.append(el);
   setInterval(() => {
     const s = info.stats;
-    el.textContent = s ? `${s.fps} fps · ${s.tier} · ${s.particles.toLocaleString()} particles` : info.state;
+    el.textContent =
+      info.state === 'static'
+        ? `field off: ${info.reason ?? 'unknown'}`
+        : s
+          ? `${s.fps} fps · ${s.tier} · ${s.particles.toLocaleString()} particles`
+          : info.state;
   }, 1000);
 }
 

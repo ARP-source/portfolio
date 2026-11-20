@@ -6,6 +6,8 @@ import {
   FloatType,
   HalfFloatType,
   LinearFilter,
+  Mesh,
+  PlaneGeometry,
   NearestFilter,
   OrthographicCamera,
   Points,
@@ -14,6 +16,7 @@ import {
   Scene,
   ShaderMaterial,
   WebGLRenderer,
+  type WebGLRenderTarget,
   Vector3,
   type IUniform,
   type Texture,
@@ -31,6 +34,8 @@ import { BONES, POSES, SEQUENCE, blendPose, handWorld, loadHand, poseBones, proj
 /** Formations implemented in v1. The rest of the contract arrives in later phases. */
 const FORM_VALUE: Partial<Record<Formation, number>> = { swarm: 0, trace: 1 };
 const MASK_SCALE = 1 / 8;
+/** Device pixels the canvas may cover at the mid tier (about a 1440 x 900 screen at 1.1x). */
+const MID_PIXELS = 1.6e6;
 /** Texture height cap for the page-sized mask (very long pages are squeezed vertically). */
 const MASK_MAX = 4096;
 /**
@@ -294,11 +299,14 @@ export class Field {
     performance.mark('field:built');
     await yieldTask();
     if (this.#disposed) return;
-    this.#renderer.compile(this.#scene, this.#camera);
-    performance.mark('field:compiled');
-    await yieldTask();
+    // Compiled off the main thread where the driver allows it (KHR_parallel_shader_compile): a
+    // blocking compile here froze the page for up to a second right as it arrived.
+    await this.#compileSim();
     if (this.#disposed) return;
-    this.#step(1 / 60); // first compute pass compiles the two sim shaders
+    await this.#renderer.compileAsync(this.#scene, this.#camera);
+    performance.mark('field:compiled');
+    if (this.#disposed) return;
+    this.#step(1 / 60);
     performance.mark('field:sim-compiled');
     await yieldTask();
     if (this.#disposed) return;
@@ -520,6 +528,23 @@ export class Field {
     this.stats.particles = n;
   }
 
+  /** The two compute shaders, compiled for the render targets they draw into, without waiting on them. */
+  async #compileSim(): Promise<void> {
+    const s = this.#sim;
+    if (!s) return;
+    const r = this.#renderer;
+    const scene = new Scene();
+    const quad = new PlaneGeometry(2, 2);
+    for (const v of [s.pos, s.vel]) scene.add(new Mesh(quad, v.material));
+    const prev = r.getRenderTarget();
+    // Programs are keyed by where they draw: compile them as the compute pass will use them.
+    r.setRenderTarget(s.gpu.getCurrentRenderTarget(s.pos) as WebGLRenderTarget);
+    const done = r.compileAsync(scene, this.#camera);
+    r.setRenderTarget(prev);
+    await done;
+    quad.dispose();
+  }
+
   #teardownSim(): void {
     const s = this.#sim;
     if (!s) return;
@@ -650,7 +675,11 @@ export class Field {
   }
 
   #pixelRatio(): number {
-    return Math.min(devicePixelRatio || 1, this.stats.tier === 'high' ? 2 : 1.5);
+    const dpr = devicePixelRatio || 1;
+    if (this.stats.tier === 'high') return Math.min(dpr, 2);
+    // Mid: a large sharp screen costs the GPU more in pixels than in particles, and a slow GPU is
+    // why it is on mid. Keep the canvas near MID_PIXELS; the dots keep their size, just a touch softer.
+    return Math.max(1, Math.min(dpr, 1.5, Math.sqrt(MID_PIXELS / (innerWidth * innerHeight))));
   }
 
   #renderOnce(): void {

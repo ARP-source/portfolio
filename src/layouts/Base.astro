@@ -29,6 +29,8 @@ const canonical = site.url ? new URL(Astro.url.pathname, site.url).href : undefi
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Fetch a project page while the pointer rests on its link, so opening it doesn't wait on the network. -->
+    <script is:inline type="speculationrules">{"prefetch":[{"where":{"href_matches":"/work/*"},"eagerness":"moderate"}]}</script>
     <style set:html={tokensCss()}></style>
     <Font cssVariable="--font-display" preload={[{ style: 'normal' }]} />
     <Font cssVariable="--font-mono" />

@@ -19,6 +19,16 @@ declare global {
 const root = document.documentElement;
 const info: NonNullable<Window['__signal']> = (window.__signal = { state: 'waiting' });
 
+/**
+ * A page opened with a view transition: hold the field's start until the glide has finished, so
+ * the heavy part of starting it (building and uploading the particles) doesn't stutter the glide.
+ */
+let revealed: Promise<unknown> = Promise.resolve();
+addEventListener('pagereveal', (e) => {
+  const vt = (e as Event & { viewTransition?: { finished: Promise<unknown> } | null }).viewTransition;
+  if (vt) revealed = Promise.race([vt.finished.catch(() => {}), new Promise((r) => setTimeout(r, 1500))]);
+});
+
 function idle(fn: () => void): void {
   const go = () => ('requestIdleCallback' in window ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200));
   if (document.readyState === 'complete') go();
@@ -49,7 +59,7 @@ async function start(): Promise<void> {
 
   const t0 = performance.now();
   performance.mark('field:import');
-  const { Field } = await import('../field/Field');
+  const [{ Field }] = await Promise.all([import('../field/Field'), revealed]);
   performance.mark('field:imported');
   const layer = document.createElement('div');
   layer.className = 'field-layer';

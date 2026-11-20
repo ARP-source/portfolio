@@ -22,7 +22,8 @@ const boots = new Set();
 for (const page of (await walk(DIST)).filter((f) => f.endsWith('.html')).sort()) {
   const html = await readFile(page, 'utf8');
   const refs = new Set([...html.matchAll(/(\/_astro\/[^"')\s]+\.(?:css|woff2))/g)].map((m) => m[1]));
-  const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
+  // Speculation rules are data for the browser (prefetch on hover), not script that runs.
+  const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]).filter((a) => !/type="speculationrules"/.test(a));
   const blocking = scripts.filter((a) => !/type="module"/.test(a)).length;
   for (const a of scripts) {
     const src = a.match(/src="([^"]+)"/)?.[1];

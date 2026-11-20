@@ -31,7 +31,7 @@ export interface EmgMeta {
   gestures: { id: number; label: string }[];
   windowing: { lengthMs: number; stepMs: number; trimS: number };
   featureCount: number;
-  model: { lambda: number; n: number[]; mean: number[][]; scatterUpper: number[] };
+  model: { lambda: number; n: number[]; mean: number[][]; scatterUpper: number[]; map: { origin: number[]; axes: number[][] } };
   accuracy: Record<'day1' | 'day8' | 'day29' | 'recal1' | 'recal2' | 'recal3', number>;
   clips: ClipMeta[];
 }

@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { decode, stack, type EmgMeta } from './emg';
 import { accuracy, addWindows, fit, predict } from './lda';
+import { clouds, mapFrame, mapView, project } from './map';
 
 export function demoSummary() {
   const meta = JSON.parse(readFileSync('public/demo/emg.json', 'utf8')) as EmgMeta;
@@ -35,5 +36,7 @@ export function demoSummary() {
   const play = emg.clips.find((c) => c.day === 1 && c.gesture === 0 && c.role === 'play+test')!;
   const path = (tr: ArrayLike<number>, W: number, H: number) =>
     Array.from(tr, (v, i) => `${i ? 'L' : 'M'}${((i / (tr.length - 1)) * W).toFixed(1)} ${(H / 2 - (v / scale) * H * 0.46).toFixed(1)}`).join('');
-  return { meta, acc, worst, worstAs: perGesture[worst]!.as, scale, play, path };
+  const view = mapView(meta.model.map);
+  const frame = mapFrame([...t1.rows, ...t29.rows].map((r) => project(view, r)));
+  return { meta, acc, worst, worstAs: perGesture[worst]!.as, scale, play, path, frame, day1Clouds: clouds(emg.stats, view) };
 }

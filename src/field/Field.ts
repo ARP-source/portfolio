@@ -14,6 +14,7 @@ import {
   Scene,
   ShaderMaterial,
   WebGLRenderer,
+  Vector4,
   type IUniform,
   type Texture,
 } from 'three';
@@ -69,6 +70,8 @@ const HAND = { spinS: 30, reducedSpin: -28 };
  * confident the hand keeps its last pose rather than following a guess.
  */
 const DEMO = { lossFull: 0.25, confident: 0.6, poseS: 0.25 };
+/** The demo map's clouds, in the order emg:map sends them. */
+const CLOUDS = ['close', 'open', 'pinch', 'point'] as const;
 const HAND_SPLIT = 0.6;
 
 interface Sim {
@@ -139,8 +142,8 @@ export class Field {
   #bleedTarget = 0;
   /** The demo: wired up (stage), eased weights, and what the classifier last said. */
   #demo = {
-    stage: false, on: 0, recruit: 0, recruitTo: 0, smear: 0, loss: 0, hand: 0, seen: false,
-    pose: 'rest' as keyof typeof POSES, t: 0,
+    stage: false, map: false, on: 0, env: 0, envTo: 0, picked: -1, loss: 0, hand: 0, seen: false,
+    pose: 'rest' as keyof typeof POSES,
   };
   #demoPose: Pose = POSES.rest.map((q) => [...q] as Pose[number]);
   #stillTimer = 0;
@@ -218,7 +221,8 @@ export class Field {
       uFade: { value: 0 },
       uDemo: { value: [0, 0, 0, 0] },
       uDemoRect: { value: [0, -1000, 1, 1] },
-      uDemoT: { value: 0 },
+      uMapC: { value: Array.from({ length: 4 }, () => new Vector4(0.5, 0.5, 0.05, 0)) },
+      uMapL: { value: new Vector4(0.05, 0.05, 0.05, 0.05) },
     };
 
     document.documentElement.dataset.mask = maskMode();
@@ -707,19 +711,16 @@ export class Field {
     const r = d.stage ? document.querySelector('[data-field-stage]')?.getBoundingClientRect() : undefined;
     const free = this.#formTo() === 0 && this.#form.value < 0.02 && this.#reform.start < 0;
     const want = !!r && r.width > 0 && r.bottom > 0 && r.top < innerHeight && free;
-    if (!free || !d.stage) d.on = 0;
+    if (!free || !d.stage || !d.map) d.on = 0;
     else d.on += ((want ? 1 : 0) - d.on) * (1 - Math.exp(-dt * 3));
     if (d.on < 0.002) d.on = 0;
-    const up = d.recruitTo > d.recruit;
-    d.recruit += (d.recruitTo - d.recruit) * (1 - Math.exp(-dt * (up ? 14 : 4)));
-    d.smear += (d.loss - d.smear) * (1 - Math.exp(-dt * 2.5));
+    const up = d.envTo > d.env;
+    d.env += (d.envTo - d.env) * (1 - Math.exp(-dt * (up ? 14 : 4)));
     const slot = document.querySelector('[data-field-hand]')?.getBoundingClientRect();
     const handOk = this.#handReady && d.seen && !!slot && slot.width > 0 && slot.height > 0;
     d.hand += ((handOk ? 1 : 0) - d.hand) * (1 - Math.exp(-dt * 3));
-    if (!this.#o.reducedMotion) d.t += dt;
     if (r) u.uDemoRect!.value = [r.x, r.y, r.width, r.height];
-    u.uDemoT!.value = d.t;
-    u.uDemo!.value = [d.on, d.recruit, d.smear, d.hand];
+    u.uDemo!.value = [d.on, d.env, d.picked, d.hand];
     // The hand eases toward the pose the classifier last read with confidence.
     const k = this.#o.reducedMotion ? 1 : 1 - Math.exp(-dt / DEMO.poseS);
     this.#demoPose = blendPose(this.#demoPose, POSES[d.pose], k);
@@ -852,7 +853,8 @@ export class Field {
     const range = document.createRange();
     const rects: DOMRect[] = [];
     for (const el of document.querySelectorAll<HTMLElement>(TEXT_SELECTOR)) {
-      if (el.closest('.hero-trace svg')) continue;
+      // The hero's own line, and captions that sit right under a formation (the demo map's), stay unmasked.
+      if (el.closest('.hero-trace svg, [data-field-nomask]')) continue;
       let list: ArrayLike<DOMRect>;
       if (lines) {
         // One rect per rendered line of text, so the fade follows the words, not the block.
@@ -952,18 +954,30 @@ export class Field {
       Math.min(1, Math.max(0, (e.baseline - e.accuracy) / DEMO.lossFull));
     const stage = (on: boolean) => {
       d.stage = on;
-      if (!on) Object.assign(d, { recruitTo: 0, loss: 0, seen: false, pose: 'rest' });
+      if (!on) Object.assign(d, { envTo: 0, picked: -1, loss: 0, seen: false, pose: 'rest' });
+    };
+    const map = ({ clouds }: { clouds: number[][] }) => {
+      const C = this.#shared.uMapC!.value as Vector4[], L = this.#shared.uMapL!.value as Vector4;
+      clouds.forEach(([cx, cy, l11, l21, l22], k) => {
+        C[k]!.set(cx!, cy!, l11!, l21!);
+        L.setComponent(k, l22!);
+      });
+      d.map = true;
     };
     stage(bus.last('emg:stage')?.on ?? false);
+    const lastMap = bus.last('emg:map');
+    if (lastMap) map(lastMap);
     const lastLoss = bus.last('emg:recalibrated') ?? bus.last('emg:drift');
     if (lastLoss) d.loss = lossOf(lastLoss);
     this.#off.push(
       bus.on('emg:stage', ({ on }) => (stage(on), this.#still())),
+      bus.on('emg:map', (e) => (map(e), this.#still())),
       bus.on('emg:envelope', ({ rms }) => {
-        d.recruitTo = Math.min(1, Math.max(0, rms));
+        d.envTo = Math.min(1, Math.max(0, rms));
         this.#still();
       }),
       bus.on('emg:prediction', ({ gesture, p }) => {
+        d.picked = gesture === 'rest' ? -1 : CLOUDS.indexOf(gesture);
         if (gesture === 'rest') d.pose = 'rest';
         else if (p >= DEMO.confident) {
           d.pose = gesture;

@@ -13,6 +13,11 @@ export interface FieldEvents {
   // Phase 4 (demo) and Phase 5 (thread) events, declared now so the contract is fixed.
   /** The demo stage is wired up (on) or gone (off); the Field forms nothing there until on. */
   'emg:stage': { on: boolean };
+  /**
+   * The demo map's four gesture clouds (close, open, pinch, point) as the current model sees them:
+   * [cx, cy, l11, l21, l22], centre and covariance Cholesky factor in 0..1 units of the map's box.
+   */
+  'emg:map': { clouds: number[][] };
   /** RMS envelope of the replayed recording, 0 (at rest) .. 1 (the loudest clip). */
   'emg:envelope': { rms: number };
   /** The classifier's label for the latest window ('rest' when nothing is held), and its posterior. */

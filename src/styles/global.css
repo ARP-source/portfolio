@@ -11,6 +11,9 @@ html {
   color-scheme: light;
   background: var(--paper);
   scroll-padding-top: 2rem;
+  /* A quiet scrollbar on the paper instead of the system's white track. */
+  scrollbar-color: var(--tissue) var(--paper);
+  scrollbar-width: thin;
 }
 body {
   margin: 0;
@@ -25,15 +28,12 @@ body {
 }
 
 /* Paper fibre: static fractal noise multiplied into the page, never animated. */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  pointer-events: none;
-  opacity: 0.05;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+/* Paper grain, painted once into the page's background (multiplied into the paper) rather than as a
+   fixed full-screen overlay: blending an overlay over the particle canvas cost a full-screen pass
+   on every frame. */
+body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  background-blend-mode: multiply;
 }
 
 h1, h2, h3, strong { color: var(--ink); }
@@ -131,7 +131,7 @@ li::marker { color: var(--ink-dim); }
 }
 @media (prefers-contrast: more) {
   :root { --ink-dim: var(--ink-soft); --tissue-faint: var(--tissue); }
-  body::after { display: none; }
+  body { background-image: none; }
 }
 
 /* One stroke style for every signal on the site: hero trace, demo trace, sparklines, thread targets. */
@@ -167,6 +167,9 @@ canvas.field {
 body > header, body > main, body > footer { position: relative; z-index: 1; }
 .hero-trace path.trace { transition: opacity var(--dur-ui) var(--ease-spring); }
 html[data-field='on'] .hero-trace path.trace { opacity: 0; }
+/* Under the particles the static trace is invisible; stop it scrolling so it isn't repainted every
+   frame. The field keeps its own clock from where the trace was (playbackPhase in Field.ts). */
+html[data-field='on'] .hero-trace .tape { animation-play-state: paused; }
 /* Mask mode "halo": text carries a soft dark halo, so particles can pass close behind it. */
 html[data-field='on'][data-mask='halo'] :is(main, header, footer) :is(h1, h2, h3, p, li, dt, dd, th, td, figcaption, a) {
   text-shadow: 0 0 6px var(--paper), 0 0 16px var(--paper), 0 0 28px var(--paper);

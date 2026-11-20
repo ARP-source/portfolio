@@ -1229,11 +1229,17 @@ function envelopeAt(phase: number): number {
  * so the particles pick up the line exactly where the SVG left it. Reduced motion holds the open hand.
  */
 function playbackPhase(): number {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return Math.max(0, SEQUENCE.indexOf('open'));
-  const anim = document.querySelector('.hero-trace .tape')?.getAnimations()[0];
-  const ms = typeof anim?.currentTime === 'number' ? anim.currentTime : performance.now();
-  return ((ms / 1000) / tracePlayback.clipS) % tracePlayback.clips;
+  if (REDUCED.matches) return Math.max(0, SEQUENCE.indexOf('open'));
+  // Read the SVG's clock once, then keep time from there: once the particles are on, the SVG's own
+  // animation is paused (global.css), and asking for it every frame forced a style recalc.
+  if (tapeOrigin === null) {
+    const anim = document.querySelector('.hero-trace .tape')?.getAnimations()[0];
+    tapeOrigin = performance.now() - (typeof anim?.currentTime === 'number' ? anim.currentTime : performance.now());
+  }
+  return (((performance.now() - tapeOrigin) / 1000) / tracePlayback.clipS) % tracePlayback.clips;
 }
+let tapeOrigin: number | null = null;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
 
 /** Whether a position: sticky element is currently held at its offset. */
 function stuck(el: Element | null): boolean {

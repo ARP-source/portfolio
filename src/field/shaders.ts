@@ -13,6 +13,7 @@ const f = (n: number) => n.toFixed(3);
 const formChunk = /* glsl */ `
 uniform float uHandOn;
 uniform float uReform;      // seconds into a re-form along the drawn routes; < 0 when not re-forming
+uniform float uPace;        // 1 normally; up to 3 while a fast scroll hurries a break-up or re-form
 uniform float uAbort;       // 1 after scrolling away mid re-form: dots not yet on the shape rejoin the flock
 const float HAND_SPLIT=0.6;
 bool isHand(vec4 h){ return uHandOn>0.5 && h.w>HAND_SPLIT; }
@@ -260,16 +261,16 @@ void main(){
   vec2 slot=flockSlot(H,uFlockT);
   vec2 slotV=(flockSlot(H,uFlockT+0.05)-slot)*20.0;
   vec2 flow=curl2(vec3(pos/170.0,uTime*0.12+seed*0.1));
-  vec2 desired=slotV+(slot-pos)*2.0+flow*14.0;
-  float sp=length(desired); if(sp>1400.0) desired*=1400.0/sp;
-  vec2 aSwarm=(desired-vel)*4.0;
+  vec2 desired=slotV+(slot-pos)*2.0*uPace+flow*14.0;
+  float sp=length(desired); if(sp>1400.0*uPace) desired*=1400.0*uPace/sp;
+  vec2 aSwarm=(desired-vel)*4.0*uPace;
 
   // Hero: swim to a point on the hand or the recorded EMG line at a capped speed, the same
   // unhurried pace as the break-up, then settle on it with a stiff spring once close.
   float s, depth; vec2 target=heroTarget(H,seed,uv,s,depth);
   vec2 to=target-pos; float dist=length(to);
   vec2 seek=to*2.2;
-  float ss=length(seek); if(ss>560.0) seek*=560.0/ss;
+  float ss=length(seek); if(ss>560.0*uPace) seek*=560.0*uPace/ss;
   const float k=60.0;
   vec2 aSpring=k*to-2.0*sqrt(k)*vel;
   vec2 aTrace=mix(aSpring,(seek-vel)*3.0,smoothstep(8.0,40.0,dist));
@@ -277,9 +278,10 @@ void main(){
   float done=reformDone(H,seed,uv);
   if(done<0.5){
     vec2 w0=reformWaypoint(H,seed,uv,uReform);
-    vec2 wv=(reformWaypoint(H,seed,uv,uReform+1.0/30.0)-w0)*30.0;
-    vec2 des=wv+(w0-pos)*6.0; float dl=length(des); if(dl>2600.0) des*=2600.0/dl;
-    aTrace=(des-vel)*12.0;
+    // The route's own clock runs uPace times faster than real time during a hurried re-form.
+    vec2 wv=(reformWaypoint(H,seed,uv,uReform+1.0/30.0)-w0)*30.0*uPace;
+    vec2 des=wv+(w0-pos)*6.0*uPace; float dl=length(des); if(dl>2600.0*uPace) des*=2600.0*uPace/dl;
+    aTrace=(des-vel)*12.0*uPace;
   }
 
   float fw=formWeightV(H,seed,uForm,V);

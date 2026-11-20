@@ -52,6 +52,13 @@ const RELEASE_MS = 700;
 const TOUCH = matchMedia('(pointer: coarse)').matches;
 /** Re-forming in place (reduced motion, or scrolling back before the hero has fully let go). */
 const FORM_MS = 1900;
+/**
+ * Scroll pace: a fast scroll speeds the break-up and the re-form up (to max times), so the page
+ * has settled by the time the reader looks. Below fromVh screens per second (reading speed)
+ * nothing changes; at fullVh and faster it runs at max. leadS: how far ahead a fast scroll is
+ * read, so the hero lets go (or starts re-forming) before the trigger point actually arrives.
+ */
+const PACE = { fromVh: 0.6, fullVh: 3, max: 3, leadS: 0.45 };
 const TEXT_SELECTOR =
   'main h1, main h2, main h3, main p, main li, main dt, main dd, main th, main td, main figcaption, main a, main .meta, header a, footer a, footer p';
 
@@ -105,10 +112,15 @@ export class Field {
   #snapNext = false;
   #sized = false;
   #pr = 0;
-  #form = { from: 0, to: 0, start: 0, value: 0 };
+  /** p: 0..1 through the sweep; pace speeds it up (latched from the scroll speed, only ever raised). */
+  #form = { from: 0, to: 0, p: 1, pace: 1, value: 0 };
+  /** Smoothed scroll speed, px/s, + down. */
+  #scrollV = 0;
+  /** How early (px before the trigger) the last release fired; re-forming waits until it is undone. */
+  #releaseLead = 0;
   /** Re-forming along the drawn routes: waits until the hero is on screen, then runs REFORM.totalS
    *  of simulation time (so a slow frame slows the whole procession instead of leaving dots behind). */
-  #reform = { pending: false, start: -1, t: 0 };
+  #reform = { pending: false, start: -1, t: 0, pace: 1 };
   #handM: Float32Array<ArrayBuffer> = handWorld(0);
   #bones = new Float32Array(BONES * 16);
   #grip = 0;
@@ -172,6 +184,7 @@ export class Field {
       uAnchor: { value: [0, 0, 1] },
       uKick: { value: 0 },
       uAbort: { value: 0 },
+      uPace: { value: 1 },
       uSnap: { value: 0 },
       uMaskStrength: { value: MASK_MODES[maskMode()].strength },
       uTrace: { value: this.#traceTex },
@@ -208,7 +221,7 @@ export class Field {
     this.#resize();
     // Only what is on screen now counts: the bus may still remember a hero the visitor has scrolled past.
     const startForm: Formation = this.#wantHero() ?? this.#heroVisible() ? 'trace' : 'swarm';
-    this.#form = { from: FORM_VALUE[startForm]!, to: FORM_VALUE[startForm]!, start: 0, value: FORM_VALUE[startForm]! };
+    this.#form = { from: FORM_VALUE[startForm]!, to: FORM_VALUE[startForm]!, p: 1, pace: 1, value: FORM_VALUE[startForm]! };
     await yieldTask();
     if (this.#disposed) return;
     // The point cloud was requested in the constructor; it is small and usually here by now.
@@ -242,13 +255,12 @@ export class Field {
   setFormation(name: Formation, instant = false): void {
     const to = FORM_VALUE[name];
     if (to === undefined) return;
-    const now = performance.now();
     // Leaving the trace after it has already scrolled far out of view (a fast scroll): don't fly
     // thousands of particles back from far off-screen. The flock starts just above the screen and
     // flies in from there.
     if (to === 0 && this.#form.value > 0.5 && !this.#traceNear() && this.#sim) {
-      this.#form = { from: 0, to: 0, start: now, value: 0 };
-      this.#reform = { pending: false, start: -1, t: 0 };
+      this.#form = { from: 0, to: 0, p: 0, pace: this.#pace(), value: 0 };
+      this.#reform = { pending: false, start: -1, t: 0, pace: 1 };
       this.#shared.uReform!.value = -1;
       this.#shared.uAbort!.value = 0;
       this.#holdFlock('top');
@@ -258,7 +270,7 @@ export class Field {
     const reforming = this.#reform.pending || this.#reform.start >= 0;
     if (reforming && to === 1) return;
     const midReform = this.#reform.start >= 0;
-    this.#reform = { pending: false, start: -1, t: 0 };
+    this.#reform = { pending: false, start: -1, t: 0, pace: 1 };
     this.#shared.uReform!.value = -1;
     this.#shared.uAbort!.value = 0;
     // Leaving: the flock gathers where the hero is and drifts off from there.
@@ -272,15 +284,15 @@ export class Field {
     // the shape let go in the usual order.
     if (to === 0 && midReform && this.#form.value === 1) {
       this.#shared.uAbort!.value = 1;
-      this.#form = { from: 1, to: 0, start: now, value: 1 };
+      this.#form = { from: 1, to: 0, p: 0, pace: this.#pace(), value: 1 };
       return;
     }
     if (to === 0 && reforming) {
       // Was only waiting for the hero to come into view: nothing has moved yet.
-      this.#form = { from: 0, to: 0, start: now, value: 0 };
+      this.#form = { from: 0, to: 0, p: 0, pace: this.#pace(), value: 0 };
       return;
     }
-    this.#form = { from: instant ? to : this.#form.value, to, start: now, value: instant ? to : this.#form.value };
+    this.#form = { from: instant ? to : this.#form.value, to, p: 0, pace: this.#pace(), value: instant ? to : this.#form.value };
     if (this.#o.reducedMotion && !this.#disposed && this.#sim) {
       this.#form.value = to;
       this.#settle(90);
@@ -486,7 +498,15 @@ export class Field {
     this.#time += dt;
 
     // An even sweep both ways, so particles let go (or join) one after another, not all at once.
-    const t = Math.min(1, (now - this.#form.start) / (this.#form.to < this.#form.from ? RELEASE_MS : FORM_MS));
+    const step = Math.min(Math.max(raw, 0), 0.1);
+    // Scroll speed: rises at once with a flick, eases off over a few tenths of a second after.
+    const inst = this.#scrollDy / Math.max(step, 1 / 240);
+    this.#scrollV += (inst - this.#scrollV) * (1 - Math.exp(-step / (Math.abs(inst) > Math.abs(this.#scrollV) ? 0.05 : 0.3)));
+    const f = this.#form;
+    // A fast scroll partway through hurries the rest of it along too.
+    f.pace = Math.max(f.pace, this.#pace());
+    f.p = Math.min(1, f.p + (step * 1000 * f.pace) / (f.to < f.from ? RELEASE_MS : FORM_MS));
+    const t = f.p;
     const e = t * t * (3 - 2 * t);
     this.#form.value = this.#form.from + (this.#form.to - this.#form.from) * e;
 
@@ -520,13 +540,17 @@ export class Field {
       r.pending = false;
       r.start = now;
       r.t = 0;
-      this.#form = { from: 1, to: 1, start: now, value: 1 };
+      r.pace = this.#pace();
+      this.#form = { from: 1, to: 1, p: 1, pace: 1, value: 1 };
     }
     if (r.start < 0) return;
-    r.t += dt;
+    r.pace = Math.max(r.pace, this.#pace());
+    this.#shared.uPace!.value = r.pace;
+    r.t += dt * r.pace;
     if (r.t > REFORM.totalS + 0.6) {
       r.start = -1;
       this.#shared.uReform!.value = -1;
+      this.#shared.uPace!.value = this.#flockPace;
     } else this.#shared.uReform!.value = r.t;
   }
 
@@ -607,7 +631,9 @@ export class Field {
     // innerHeight, not the canvas height: on a phone the canvas keeps the tallest height seen.
     // A line that sits at the bottom of a short screen still counts once it is mostly on screen.
     const vh = innerHeight;
-    return r.top + r.height * 0.5 < vh && r.bottom > vh * 0.1;
+    // Scrolling up fast, start as the line is about to arrive rather than once it has.
+    const lead = Math.max(0, -this.#scrollV) * PACE.leadS;
+    return r.top + r.height * 0.5 < vh + lead && r.bottom > vh * 0.1;
   }
 
   /** Within a screen of the viewport: close enough that released particles can stream in. */
@@ -625,7 +651,20 @@ export class Field {
   #wantHero(): boolean | null {
     const el = document.querySelector('[data-field-release]');
     if (!el || !document.querySelector('.hero-trace svg')) return null;
-    return el.getBoundingClientRect().top > innerHeight;
+    const top = el.getBoundingClientRect().top;
+    if (this.#formTo() === 1) {
+      // Scrolling down fast, let go a little before the divider arrives, by how far it will
+      // travel in leadS. Remember how early, so stopping right there doesn't re-form it.
+      const lead = Math.max(0, this.#scrollV) * PACE.leadS;
+      if (top > innerHeight + lead) return true;
+      this.#releaseLead = lead;
+      return false;
+    }
+    if (top > innerHeight + this.#releaseLead) {
+      this.#releaseLead = 0;
+      return true;
+    }
+    return false;
   }
 
   /** Hand rect, gesture (cycle + EMG grip) and the slow turn, as 16 skinning matrices. */
@@ -656,9 +695,19 @@ export class Field {
     poseBones(pose, handWorld(spin, 8, this.#handM), 0, this.#bones);
   }
 
+  /** 1 at reading speed, up to PACE.max for a fast scroll. */
+  #pace(): number {
+    const v = Math.abs(this.#scrollV) / Math.max(1, innerHeight);
+    const k = Math.min(1, Math.max(0, (v - PACE.fromVh) / (PACE.fullVh - PACE.fromVh)));
+    return 1 + (PACE.max - 1) * k;
+  }
+
+  #flockPace = 1;
+
   #holdFlock(where: 'hero' | 'top' | 'free'): void {
     const f = this.#flock;
     f.hold = where;
+    this.#flockPace = this.#pace();
     // From above the screen it starts already on its way, so the screen is never empty for long.
     f.k = where === 'free' ? 1 : where === 'top' ? 0.2 : 0;
     this.#updateFlock(0);
@@ -667,9 +716,13 @@ export class Field {
   #updateFlock(dt: number): void {
     const f = this.#flock;
     if (f.hold !== 'free') {
-      f.k = Math.min(1, f.k + dt / FLOCK.holdS);
+      this.#flockPace = Math.max(this.#flockPace, this.#pace());
+      f.k = Math.min(1, f.k + (dt * this.#flockPace) / FLOCK.holdS);
       if (f.k >= 1) f.hold = 'free';
     }
+    // Dots chase their flock places harder while a fast break-up is under way, then ease back.
+    else this.#flockPace += (1 - this.#flockPace) * (1 - Math.exp(-dt * 1.5));
+    if (this.#reform.start < 0) this.#shared.uPace!.value = this.#flockPace;
     if (f.hold === 'hero') {
       const [x, y, w, h] = this.#shared.uTraceRect!.value as number[];
       f.x = x! + w! * 0.5;

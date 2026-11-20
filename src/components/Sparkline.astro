@@ -7,8 +7,10 @@ interface Props {
   label: string;
   unit: string;
   size?: 'card' | 'header';
+  /** Mark it as this project's thread line (see thread-line.ts); home: the line of its own page. */
+  thread?: 'card' | 'home';
 }
-const { slug, x, y, label, unit, size = 'card' } = Astro.props;
+const { slug, x, y, label, unit, size = 'card', thread } = Astro.props;
 const W = 160, H = 40, P = 3;
 const [x0, x1] = [Math.min(...x), Math.max(...x)];
 const [y0, y1] = [Math.min(...y), Math.max(...y)];
@@ -20,7 +22,7 @@ const desc = `${label}: ${first}${unit} at ${x0} to ${last}${unit} at ${x1}`;
 ---
 
 <figure class={`spark spark--${size}`} style={`view-transition-name: spark-${slug}`}>
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={desc}>
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={desc} data-thread-line={thread && slug} data-thread-home={thread === 'home' ? '' : undefined}>
     <path class="trace" d={d}></path>
     <circle cx={px(x1)} cy={py(last)} r="2" class="end"></circle>
   </svg>

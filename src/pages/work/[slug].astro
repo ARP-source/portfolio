@@ -12,15 +12,17 @@ export async function getStaticPaths() {
 const { project } = Astro.props;
 const p = project.data;
 const { Content } = await render(project);
+// The same line the project's card draws (see ProjectCard): the dots that drew it carry on here.
+const line = p.sparkline ? 'spark' : p.keyMetric ? 'result' : 'title';
 const statusLabel = { shipped: 'Shipped', 'in-progress': 'In progress', prototype: 'Prototype' }[p.status];
 ---
 
 <Base title={p.title} description={p.oneLiner}>
   <article class="notebook wrap" aria-labelledby="title">
-    <p class="meta crumbs"><a href="/#work">← Projects</a></p>
+    <p class="meta crumbs"><a href="/#work" data-back>← Projects</a></p>
     <header>
       <p class="meta">{statusLabel} · {p.dates}</p>
-      <h1 id="title">{p.title}</h1>
+      <h1 id="title" style={`view-transition-name: title-${project.id}`}><span data-thread-line={line === 'title' ? project.id : undefined} data-thread-home={line === 'title' ? '' : undefined}>{p.title}</span></h1>
       <p class="one">{p.oneLiner}</p>
       <dl class="facts meta">
         <div><dt>Role</dt><dd>{p.role}</dd></div>
@@ -36,8 +38,8 @@ const statusLabel = { shipped: 'Shipped', 'in-progress': 'In progress', prototyp
         </div>
       </dl>
       <div class="signal-row">
-        {p.sparkline && <Sparkline slug={project.id} size="header" {...p.sparkline} />}
-        {p.keyMetric && <KeyMetric metric={p.keyMetric} size="header" />}
+        {p.sparkline && <Sparkline slug={project.id} size="header" {...p.sparkline} thread="home" />}
+        {p.keyMetric && <KeyMetric metric={p.keyMetric} size="header" thread={line === 'result' ? project.id : undefined} />}
       </div>
       {p.sparkline && <p class="meta">series source: {p.sparkline.source}</p>}
     </header>
@@ -45,7 +47,7 @@ const statusLabel = { shipped: 'Shipped', 'in-progress': 'In progress', prototyp
     <div class="body col">
       <Content />
     </div>
-    <p class="meta back"><a href="/#work">← All projects</a></p>
+    <p class="meta back"><a href="/#work" data-back>← All projects</a></p>
   </article>
 </Base>
 

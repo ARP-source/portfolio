@@ -6,6 +6,8 @@
 import { bus } from './bus';
 import { observeSections } from './sections';
 import { detectCapabilities } from '../field/tiers';
+import { readSession, writeSession } from './session';
+import { threadHeights, threadRect } from './thread-line';
 
 type Stats = { fps: number; tier: string; particles: number; frames: number };
 declare global {
@@ -30,6 +32,14 @@ async function start(): Promise<void> {
   }
   observeSections();
   const caps = detectCapabilities();
+  // An earlier page this visit already measured this device: start where its probe ended up.
+  const saved = readSession();
+  const known = !new URLSearchParams(location.search).has('tier') && caps.tier !== 'static' && !!saved.tier;
+  if (known) {
+    caps.tier = saved.tier!;
+    caps.reason = `${saved.reason ?? 'measured'}, earlier this visit`;
+  }
+  bus.on('field:tier', ({ tier, reason }) => writeSession({ tier, reason }));
   if (caps.tier === 'static') {
     info.state = 'static';
     info.reason = caps.reason;
@@ -67,6 +77,8 @@ async function start(): Promise<void> {
       tier: caps.tier,
       halfFloat: caps.halfFloat,
       reducedMotion: reduced.matches,
+      knownTier: known,
+      arrive: arrival(saved),
       onFallback: fallback,
       onFirstFrame: () => {
         root.dataset.field = 'on';
@@ -89,6 +101,34 @@ async function start(): Promise<void> {
   addEventListener('pagehide', (e) => {
     if (!e.persisted) field?.dispose();
   });
+}
+
+/** Opened from a project card a moment ago: where that card's line was, for the field to pick up. */
+function arrival(s: ReturnType<typeof readSession>) {
+  const slug = location.pathname.match(/^\/work\/([^/]+)/)?.[1];
+  const t = s.thread;
+  if (t) writeSession({ thread: undefined });
+  return t && t.slug === slug && Date.now() - t.at < 15_000 ? t : undefined;
+}
+
+/**
+ * Moving between pages: opening a project saves where its card's line is on screen, so its dots
+ * can carry on into the project's page; and the project page's way back goes to the ordering of
+ * the list the visitor came from (/, /neuro or /swe).
+ */
+function rememberPages(): void {
+  if (document.querySelector('[data-thread-target]')) writeSession({ list: location.pathname });
+  addEventListener('click', (e) => {
+    const a = (e.target as Element | null)?.closest?.('a[href^="/work/"]');
+    const slug = a?.getAttribute('href')?.split(/[/#?]/)[2];
+    const el = slug ? document.querySelector(`[data-thread-target="${slug}"] [data-thread-line]`) : null;
+    const rect = el && threadRect(el);
+    if (slug && rect) writeSession({ thread: { slug, rect, ys: threadHeights(el), at: Date.now() } });
+  });
+  const list = readSession().list;
+  if (list === '/neuro' || list === '/swe') {
+    document.querySelectorAll<HTMLAnchorElement>('a[href="/#work"][data-back]').forEach((a) => (a.href = `${list}#work`));
+  }
 }
 
 /** ?fps: a small readout for checking a real device by hand. */
@@ -123,5 +163,6 @@ function demoWhenNear(): void {
   io.observe(el);
 }
 
+rememberPages();
 demoWhenNear();
 idle(() => void start());

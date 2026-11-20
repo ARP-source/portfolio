@@ -22,7 +22,8 @@ import { GPUComputationRenderer, type Variable } from 'three/examples/jsm/misc/G
 import { bus, type Formation, type Tier } from '../scripts/bus';
 import { durations, palette, tracePlayback } from '../tokens/tokens';
 import { TIER_SIZE } from './tiers';
-import { pointsFragment, pointsVertex, positionShader, velocityShader } from './shaders';
+import { THREAD, pointsFragment, pointsVertex, positionShader, velocityShader } from './shaders';
+import { THREAD_N, threadHeights, threadRect, type Rect } from '../scripts/thread-line';
 import trace from '../data/hero-trace.json';
 import { REFORM, traceRoute } from './reform';
 import { BONES, POSES, SEQUENCE, blendPose, handWorld, loadHand, poseBones, projectHand, type HandData, type Pose } from './hand';
@@ -75,6 +76,14 @@ const DEMO = { lossFull: 0.25, confident: 0.6, poseS: 0.25 };
 /** The demo map's clouds, in the order emg:map sends them. */
 const CLOUDS = ['close', 'open', 'pinch', 'point'] as const;
 const HAND_SPLIT = 0.6;
+/**
+ * Thread: drawS to draw a project's line left to right, undrawS to let it go again (right to left)
+ * before the next one starts. The card whose middle is nearest the middle of the screen, within
+ * the pick band (fractions of the screen height), holds it; another card takes over only once it
+ * is nearer by margin of the screen, so a card sitting halfway doesn't flip it back and forth.
+ */
+const THREAD_TIME = { drawS: 1.1, undrawS: 0.45, arriveS: 2.5 };
+const THREAD_BAND = { pick: [0.25, 0.75], margin: 0.12 } as const;
 
 interface Sim {
   size: number;
@@ -98,6 +107,10 @@ export interface FieldOptions {
   onFallback: (reason: string) => void;
   /** Called after the first rendered frame, so the SVG can fade out under the particles. */
   onFirstFrame: () => void;
+  /** The tier came from an earlier page's probe this visit: don't probe it upward again. */
+  knownTier?: boolean;
+  /** Opened from a project card: where that card's line was, so its dots start there. */
+  arrive?: { slug: string; rect: Rect; ys: number[] } | undefined;
 }
 
 export class Field {
@@ -163,6 +176,8 @@ export class Field {
   /** A slow probe at mid gets one more look before the field gives up: a load hitch is not a slow GPU. */
   #retried = false;
   #fade = 0;
+  /** The thread: which line it draws (el), how far the pen has got, and a hand-over in progress. */
+  #thread = { el: null as Element | null, pen: 0, arriving: 0, cards: [] as HTMLElement[] };
   #off: Array<() => void> = [];
   #disposed = false;
 
@@ -237,7 +252,21 @@ export class Field {
       uMapX: { value: Array.from({ length: 4 }, () => new Vector3(0.05, 0, 0)) },
       uMapY: { value: Array.from({ length: 4 }, () => new Vector3(0, 0.05, 0)) },
       uMapZ: { value: Array.from({ length: 4 }, () => new Vector3(0, 0, 0.05)) },
+      uThread: { value: [0, 0, 0, 0] },
+      uThreadRect: { value: [0, -1000, 1, 1] },
+      uThreadVel: { value: [0, 0] },
+      uThreadY: { value: new Float32Array(THREAD_N) },
     };
+    if (o.knownTier) this.#stepped = true;
+    if (o.arrive && !o.reducedMotion) {
+      // The dots start on the card's line as it was on the last page, then swim to this page's.
+      const el = document.querySelector(`[data-thread-line="${o.arrive.slug}"]`);
+      if (el) {
+        this.#threadOn(el);
+        this.#thread.pen = 1;
+        this.#thread.arriving = THREAD_TIME.arriveS;
+      }
+    }
 
     document.documentElement.dataset.mask = maskMode();
     performance.mark('field:renderer');
@@ -430,6 +459,7 @@ export class Field {
     const onTrace = this.#form.value > 0.5;
     this.#snapNext = !onTrace;
     const handOn = this.#shared.uHandOn!.value === 1;
+    const arrive = this.#thread.arriving > 0 && this.#o.arrive?.ys.length === THREAD_N ? this.#o.arrive : null;
     for (let i = 0; i < n; i++) {
       const seed = Math.random();
       if (onTrace && handOn && homes[i * 4 + 3]! > HAND_SPLIT) {
@@ -442,6 +472,13 @@ export class Field {
         const sv = traceSample(u, this.#shared.uPhase!.value as number);
         pa[i * 4] = rx! + u * rw!;
         pa[i * 4 + 1] = ry! + rh! * 0.5 - sv * rh! * 0.44 + (((seed * 7.13) % 1) - 0.5) * 2.4;
+      } else if (arrive && (Math.fround(seed) * 17.93) % 1 < THREAD.share) {
+        // Thread members of a card that was just opened: on that card's line, where it last was.
+        const u = ((Math.fround(seed) * 17.93) % 1) / THREAD.share;
+        const x = u * (THREAD_N - 1), k = Math.min(Math.floor(x), THREAD_N - 2);
+        const y = arrive.ys[k]! + (arrive.ys[k + 1]! - arrive.ys[k]!) * (x - k);
+        pa[i * 4] = arrive.rect[0] + u * arrive.rect[2];
+        pa[i * 4 + 1] = arrive.rect[1] + y * arrive.rect[3];
       } else {
         // Placed in the flock by the first compute step (uSnap).
         pa[i * 4] = homes[i * 4]! * this.#vw;
@@ -505,6 +542,7 @@ export class Field {
     u.uSnap!.value = this.#snapNext ? 1 : 0;
     u.uPhase!.value = playbackPhase();
     this.#updateDemo(dt);
+    this.#updateThread(dt);
     this.#updateHand(dt);
     // The demo's stain shows only while the demo is on screen; the hero is never stained by it.
     const bleedTo = Math.max(this.#bleedTarget, this.#demo.loss * this.#demo.view);
@@ -769,6 +807,80 @@ export class Field {
     this.#demoPose = blendPose(this.#demoPose, POSES[d.pose], k);
   }
 
+  /**
+   * The thread: once the hero has let go, the project card in the middle of the screen gets its
+   * line drawn by a slice of the flock; on a project's own page, its graph near the top does. A new
+   * line waits for the last one to be let go, so one set of dots moves from card to card.
+   */
+  #updateThread(dt: number): void {
+    const t = this.#thread;
+    const u = this.#shared;
+    const free = this.#formTo() === 0 && this.#form.value < 0.02 && this.#reform.start < 0;
+    const want = free ? this.#threadPick() : null;
+    const still = this.#o.reducedMotion;
+    if (t.arriving > 0) t.arriving = Math.max(0, t.arriving - dt);
+    if (want === t.el && t.el) t.pen = still ? 1 : Math.min(1, t.pen + dt / THREAD_TIME.drawS);
+    else if (t.pen > 0 && !still) t.pen = Math.max(0, t.pen - dt / THREAD_TIME.undrawS);
+    else t.pen = 0;
+    if (t.pen === 0 && want !== t.el) {
+      t.el?.removeAttribute('data-threaded');
+      this.#threadOn(want);
+      if (want && still) t.pen = 1;
+    }
+    const r = t.el ? threadRect(t.el) : null;
+    if (r) {
+      const [px, py] = u.uThreadRect!.value as number[];
+      const v = u.uThreadVel!.value as number[];
+      const k = dt > 0 && py! > -999 ? 1 - Math.exp(-dt / 0.03) : 0;
+      if (k > 0) {
+        v[0] = v[0]! + ((r[0] - px!) / dt - v[0]!) * k;
+        v[1] = v[1]! + ((r[1] - py!) / dt - v[1]!) * k;
+      }
+      u.uThreadRect!.value = r;
+      // The SVG line steps back while the dots draw it, as the hero's does.
+      if (t.pen > 0.5) t.el!.setAttribute('data-threaded', '');
+      else t.el!.removeAttribute('data-threaded');
+    }
+    // About three dots per px of line: enough for a solid stroke, and a short line isn't a blob.
+    const members = (this.#sim?.size ?? 76) ** 2 * THREAD.share;
+    const w = r ? Math.min(1, (Math.hypot(r[2], r[3]) * 3) / members) : 1;
+    u.uThread!.value = [t.el && r ? 1 : 0, t.pen, t.arriving > 0 ? 1 : 0, w];
+  }
+
+  #threadOn(el: Element | null): void {
+    const u = this.#shared;
+    this.#thread.el = el;
+    if (!el) return;
+    u.uThreadY!.value = Float32Array.from(threadHeights(el));
+    u.uThreadVel!.value = [0, 0];
+    u.uThreadRect!.value = [0, -1000, 1, 1];
+  }
+
+  /** The line the thread should be on now: a card in the middle of the screen, or this page's own graph. */
+  #threadPick(): Element | null {
+    const t = this.#thread;
+    const h = innerHeight;
+    const [a, b] = THREAD_BAND.pick;
+    const cur = t.el?.closest('[data-thread-target]');
+    let best: HTMLElement | null = null, bestD = Infinity, curD = Infinity;
+    for (const card of t.cards) {
+      const r = card.getBoundingClientRect();
+      const c = r.top + r.height / 2;
+      if (r.height === 0 || c < a * h || c > b * h) continue;
+      const d = Math.abs(c - h / 2);
+      if (card === cur) curD = d;
+      if (d < bestD) (best = card), (bestD = d);
+    }
+    if (cur && curD - bestD < THREAD_BAND.margin * h) return t.el;
+    if (best) return best.querySelector('[data-thread-line]');
+    const own = document.querySelector('[data-thread-home]');
+    if (own) {
+      const r = own.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < h) return own;
+    }
+    return null;
+  }
+
   /** Hand rect, gesture (cycle + EMG grip) and the slow turn, as 16 skinning matrices. */
   #updateHand(dt: number): void {
     const el = document.querySelector<HTMLElement>('.hero-hand');
@@ -888,6 +1000,9 @@ export class Field {
 
   /** Text rects in document coordinates; re-read on resize and when layout changes. */
   #measureText(): void {
+    this.#thread.cards = Array.from(document.querySelectorAll<HTMLElement>('[data-thread-target]')).filter((c) =>
+      c.querySelector('[data-thread-line]'),
+    );
     const sx = scrollX, sy = scrollY;
     const lines = MASK_MODES[maskMode()].lines;
     const range = document.createRange();
@@ -910,8 +1025,14 @@ export class Field {
     // offset, so scrolling never redraws or re-uploads it.
     const m = this.#mask, de = document.documentElement;
     const w = Math.max(this.#vw, de.scrollWidth), h = Math.max(this.#vh, de.scrollHeight);
-    m.canvas.width = Math.max(1, Math.round(w * MASK_SCALE));
-    m.canvas.height = Math.max(1, Math.min(MASK_MAX, Math.round(h * MASK_SCALE)));
+    const cw = Math.max(1, Math.round(w * MASK_SCALE));
+    const ch = Math.max(1, Math.min(MASK_MAX, Math.round(h * MASK_SCALE)));
+    if (cw !== m.canvas.width || ch !== m.canvas.height) {
+      m.canvas.width = cw;
+      m.canvas.height = ch;
+      // The GPU copy has a fixed size: a page that grows (the demo mounting, fonts) needs a new one.
+      m.tex.dispose();
+    }
     m.size = [w, h];
     m.dirty = true;
   }

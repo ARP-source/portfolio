@@ -2,12 +2,14 @@
 interface Props {
   metric: { label: string; value: string; unit?: string | undefined; source: string };
   size?: 'card' | 'header';
+  /** The project's slug, when its thread is drawn under the value on this page. */
+  thread?: string | undefined;
 }
-const { metric, size = 'card' } = Astro.props;
+const { metric, size = 'card', thread } = Astro.props;
 ---
 
 <p class={`metric metric--${size} mono`}>
-  <span class="value">{metric.value}</span>
+  <span class="value" data-thread-line={thread} data-thread-home={thread ? '' : undefined}>{metric.value}</span>
   {metric.unit && <span class="unit">{metric.unit}</span>}
   <span class="label meta">{metric.label} · source: {metric.source}</span>
 </p>

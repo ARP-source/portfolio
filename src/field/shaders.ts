@@ -3,6 +3,8 @@ import { REFORM, ROUTE_N } from './reform';
 
 /** Demo map: the share of trace members that draw the four gesture clouds, and their extent in SDs. */
 export const DEMO = { cloudShare: 0.5, cloudSd: 2.0 };
+/** Thread: the share of the flock that draws a project's graph, and how many points describe it. */
+export const THREAD = { share: 0.1, n: 32 };
 
 const f = (n: number) => n.toFixed(3);
 
@@ -56,6 +58,29 @@ float demoWeight(vec4 h, float seed){
 float demoInk(vec4 h, float seed){
   if(isHand(h)) return 1.0;
   return abs(cloudOf(seed)-uDemo.z)<0.5 ? 0.55+0.45*uDemo.y : 0.3;
+}
+`;
+
+/**
+ * Thread (Phase 5): a slice of the flock leaves it and draws one project's graph, the sparkline on
+ * its card or page (a line under its result when it has no series). Dots take their places in
+ * order along the line, so it draws from left to right like a pen; uThread.y is how far the pen
+ * has got. Hand members never join: the hand belongs to the hero and the demo.
+ */
+const threadWeightChunk = /* glsl */ `
+uniform vec4 uThread;       // x on 0..1, y pen 0..1 along the line, z 1 while arriving from the last page,
+                            // w the share of members a line this long needs (a short one takes fewer)
+uniform vec4 uThreadRect;   // the graph's box: x, y, w, h in CSS px
+uniform vec2 uThreadVel;    // how fast the box moves on screen, px/s
+const float THREAD_SHARE=${f(THREAD.share)};
+// Members are the seeds whose fract(seed*17.93) falls under the share; spread over that range they
+// are evenly spread along the line too (a second hash of the same seed would bunch them up).
+float threadU(float seed){ return fract(seed*17.93)/THREAD_SHARE; }
+float threadWeight(vec4 h, float seed){
+  if(uThread.x<=0.0 || isHand(h) || fract(seed*17.93)>=THREAD_SHARE) return 0.0;
+  if(fract(sin(seed*311.7)*43758.545)>uThread.w) return 0.0;
+  float u=threadU(seed);
+  return uThread.x*smoothstep(u*0.75,u*0.75+0.25,uThread.y);
 }
 `;
 
@@ -298,6 +323,15 @@ vec2 demoTarget(vec4 h, float seed, vec2 uv, out float depth){
   if(isHand(h)) return handTarget(uv,depth);
   return cloudTarget(seed,depth);
 }
+${threadWeightChunk}
+uniform float uThreadY[${THREAD.n}]; // the line's height at evenly spaced x, 0 top .. 1 bottom of the box
+vec2 threadTarget(float seed){
+  float u=threadU(seed);
+  float x=u*${THREAD.n - 1}.0; int i=int(min(floor(x),${THREAD.n - 2}.0));
+  float y=mix(uThreadY[i],uThreadY[i+1],x-float(i));
+  // A stroke a couple of px thick, like the SVG line it stands in for.
+  return uThreadRect.xy+vec2(u,y)*uThreadRect.zw+vec2(0.0,(fract(seed*7.13)-0.5)*1.2);
+}
 `;
 
 export const velocityShader = /* glsl */ `
@@ -340,6 +374,18 @@ void main(){
   float fw=formWeightV(H,seed,uForm,V);
   vec2 acc=mix(aSwarm,aTrace,fw);
 
+  // Thread: the same swim-then-spring, in the graph's own frame so a scroll doesn't string it out.
+  float tw=threadWeight(H,seed);
+  vec2 tto=threadTarget(seed)-pos; float tdist=length(tto);
+  if(tw>0.0){
+    // Arriving from the last page the dots cross the screen, so they may swim faster.
+    float cap=uThread.z>0.5 ? 1400.0 : 900.0;
+    vec2 tseek=tto*2.6; float tss=length(tseek); if(tss>cap) tseek*=cap/tss;
+    tseek+=uThreadVel;
+    vec2 aThread=mix(k*tto-2.0*sqrt(k)*(vel-uThreadVel),(tseek-vel)*3.5,smoothstep(8.0,40.0,tdist));
+    acc=mix(acc,aThread,tw);
+  }
+
   // Demo: the same swim-then-spring as the hero, toward a gesture cloud or the posed hand.
   float dw=demoWeight(H,seed);
   float ddepth; vec2 dt=demoTarget(H,seed,uv,ddepth);
@@ -363,14 +409,15 @@ void main(){
   // it stops dead on its spot when the line is complete.
   if(done<0.5) vel*=1.0-reformOnLine(H,seed,uReform);
   // Activation: ink where the recording spikes or the pointer touched, tissue at rest.
-  float act=max(max(fw*smoothstep(0.15,0.8,abs(s)), push), dw*demoInk(H,seed));
+  float act=max(max(fw*smoothstep(0.15,0.8,abs(s)), push), max(dw*demoInk(H,seed), tw));
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
   // Arrived: latches once a particle reaches its point, so it then rides the playing trace
   // exactly (ramps to 1); it clears as soon as the particle is released.
   float arrived=0.0;
   if(fw>0.85) arrived=(dist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
   if(done<0.5) arrived=0.0;
-  // In the demo, once on its point a dot stays locked to it.
+  // On the thread or in the demo, once on its point a dot stays locked to it.
+  if(tw>0.85) arrived=(tdist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
   if(dw>0.85) arrived=(ddist<10.0 || V.w>0.0) ? min(1.0,max(V.w,0.0)+uDt*4.0) : 0.0;
   if(uSnap>0.5){ vel=vec2(0.0); z=0.0; arrived=0.0; }
   gl_FragColor=vec4(vel,z,arrived);
@@ -392,6 +439,13 @@ void main(){
   // Re-forming, running along the line to its spot: ride the playing line exactly, so it draws clean.
   float ol=reformOnLine(H,P.w,uReform)*(1.0-reformDone(H,P.w,uv));
   if(ol>0.0) pos=mix(pos,reformWaypoint(H,P.w,uv,uReform),ol);
+  float tw=threadWeight(H,P.w);
+  if(tw>0.0){
+    vec2 tt=threadTarget(P.w);
+    pos=mix(pos,tt,smoothstep(0.85,1.0,tw)*max(V.w,1.0-smoothstep(3.0,24.0,length(tt-pos))));
+    depth*=1.0-tw;
+    fw=max(fw,tw);
+  }
   float dw=demoWeight(H,P.w);
   if(dw>0.0){
     float dd; vec2 dt=demoTarget(H,P.w,uv,dd);
@@ -400,7 +454,8 @@ void main(){
     depth=mix(depth,dd,dw);
     fw=max(fw,dw);
   }
-  if(uSnap>0.5) pos=flockSlot(H,uFlockT);
+  // Dots arriving from the last page's card keep the place they were given there.
+  if(uSnap>0.5 && !(uThread.z>0.5 && tw>0.0)) pos=flockSlot(H,uFlockT);
   // z carries the hand's depth to the point shader (near dots larger and darker).
   gl_FragColor=vec4(pos,depth*fw,P.w);
 }
@@ -415,7 +470,9 @@ uniform float uPixelRatio;
 uniform float uForm;
 ${formChunk}
 ${demoWeightChunk}
+${threadWeightChunk}
 attribute vec2 ref;
+varying float vThread;
 varying float vAct;
 varying vec2 vScreen;
 varying float vRank;
@@ -431,7 +488,8 @@ void main(){
   vAct=V.z; vRank=H.z; vScreen=P.xy/uViewport; vSeed=P.w; vDepth=P.z;
   vMaskUv=vec2((P.x+uMaskView.x)/uMaskView.z, 1.0-(P.y+uMaskView.y)/uMaskView.w);
   float dw=demoWeight(H,P.w);
-  vRecruit=max(formWeightV(H,P.w,uForm,V),dw*demoInk(H,P.w));
+  vThread=threadWeight(H,P.w);
+  vRecruit=max(max(formWeightV(H,P.w,uForm,V),dw*demoInk(H,P.w)),vThread);
   // Swarm dots 2-3 px, big enough to read as ink; recruited dots swell a little; on the hand,
   // nearer dots are larger.
   gl_PointSize=(mix(2.0,3.0,H.z*H.z)+vRecruit*0.6)*(1.0+0.25*P.z)*uPixelRatio;
@@ -455,6 +513,7 @@ varying float vSeed;
 varying float vRecruit;
 varying float vDepth;
 varying vec2 vMaskUv;
+varying float vThread;
 float hash(float n){ return fract(sin(n)*43758.5453); }
 void main(){
   vec2 c=gl_PointCoord-0.5; float r2=dot(c,c);
@@ -476,7 +535,8 @@ void main(){
   a*=clamp(0.78+0.45*vDepth,0.4,1.0);
 
   float mask=texture2D(uMask,vMaskUv).r;
-  a*=edge*(1.0-uMaskStrength*mask)*uFade;
+  // Thread dots draw right under a line of text, so the text fade leaves them alone.
+  a*=edge*(1.0-uMaskStrength*mask*(1.0-vThread))*uFade;
   gl_FragColor=vec4(col*a,a);
 }
 `;

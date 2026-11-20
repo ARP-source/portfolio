@@ -1,4 +1,4 @@
-/* Signal: one visual system. Colour = state: bone reads, olive rests, bronze signals, verdigris drifts. */
+/* Signal: one visual system, ink on paper. Tissue rests, ink is signal, drift bleeds blue (and only drift). */
 
 *,
 *::before,
@@ -6,32 +6,35 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  color-scheme: dark;
-  background: var(--bg);
+  color-scheme: light;
+  background: var(--paper);
   scroll-padding-top: 2rem;
 }
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg);
-  color: var(--bone);
+  background: var(--paper);
+  /* Ink reads heavy as long-form text on paper; body copy is ink-soft, headings and key numbers stay ink. */
+  color: var(--ink-soft);
   font-family: var(--font-display);
   font-size: clamp(1.0625rem, 0.98rem + 0.3vw, 1.1875rem);
   line-height: 1.6;
   text-rendering: optimizeLegibility;
 }
 
-/* Static film grain: fractal noise, 3 octaves, never animated. */
+/* Paper fibre: static fractal noise multiplied into the page, never animated. */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 100;
   pointer-events: none;
-  opacity: 0.045;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+h1, h2, h3, strong { color: var(--ink); }
 h1, h2, h3 { font-weight: 560; line-height: 1.08; letter-spacing: -0.015em; margin: 0; text-wrap: balance; }
 h1 { font-size: clamp(2.75rem, 1.6rem + 5vw, 5.5rem); font-weight: 600; letter-spacing: -0.03em; }
 h2 { font-size: clamp(1.9rem, 1.4rem + 2vw, 2.9rem); }
@@ -40,15 +43,16 @@ p { margin: 0 0 1em; text-wrap: pretty; }
 img { max-width: 100%; height: auto; display: block; }
 
 a {
-  color: var(--bronze);
+  color: var(--ink);
   text-decoration-line: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.2em;
-  text-decoration-color: color-mix(in srgb, var(--bronze) 45%, transparent);
-  transition: color var(--dur-ui) var(--ease-spring), text-decoration-color var(--dur-ui) var(--ease-spring);
+  text-decoration-color: var(--ink-dim);
+  transition: text-decoration-color var(--dur-ui) var(--ease-spring);
 }
-a:hover { color: var(--bronze-bright); text-decoration-color: currentColor; }
-:focus-visible { outline: 2px solid var(--bronze-bright); outline-offset: 3px; border-radius: 2px; }
+a:hover { text-decoration-color: var(--ink); }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 2px; }
+::selection { background: var(--ink); color: var(--paper); }
 
 /* Data voice: every number, unit, label and metadata line. */
 .mono, code, kbd, samp, pre, table, .meta {
@@ -56,17 +60,16 @@ a:hover { color: var(--bronze-bright); text-decoration-color: currentColor; }
   font-variant-numeric: tabular-nums slashed-zero;
   font-feature-settings: 'zero' 1, 'tnum' 1;
 }
-.meta { font-size: 0.8rem; letter-spacing: 0.02em; color: var(--bone-dim); line-height: 1.5; }
-.dim { color: var(--bone-dim); }
-.signal { color: var(--bronze); }
-code { font-size: 0.86em; color: var(--bone); }
+.meta { font-size: 0.8rem; letter-spacing: 0.03em; color: var(--ink-dim); line-height: 1.5; }
+.dim { color: var(--ink-dim); }
+code { font-size: 0.86em; color: var(--ink); }
 
 /* TODO markers stay visible on purpose: they are honest gaps, not decoration. */
 .todo, p:has(> .todo-text) {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  color: var(--bone-dim);
-  border-left: 2px solid var(--olive);
+  color: var(--ink-dim);
+  border-left: 2px solid var(--tissue);
   padding-left: 0.75rem;
 }
 
@@ -76,8 +79,8 @@ code { font-size: 0.86em; color: var(--bone); }
   top: -4rem;
   z-index: 200;
   padding: 0.5rem 0.9rem;
-  background: var(--bone);
-  color: var(--bg);
+  background: var(--ink);
+  color: var(--paper);
   font-family: var(--font-mono);
   font-size: 0.85rem;
   text-decoration: none;
@@ -93,10 +96,10 @@ code { font-size: 0.86em; color: var(--bone); }
 .wrap { width: min(100% - 2.5rem, 68rem); margin-inline: auto; }
 .col { max-width: 38rem; }
 
-/* Instrument graticule: fine olive-deep rules with tick marks, used once per section. */
+/* Instrument graticule: fine tissue-faint rules with tick marks. */
 .graticule {
   position: relative;
-  border-top: 1px solid var(--olive-deep);
+  border-top: 1px solid var(--tissue-faint);
   padding-top: 0.75rem;
   margin-bottom: 2.5rem;
   display: flex;
@@ -108,38 +111,38 @@ code { font-size: 0.86em; color: var(--bone); }
   position: absolute;
   inset: -1px 0 auto 0;
   height: 6px;
-  background: repeating-linear-gradient(90deg, var(--olive-deep) 0 1px, transparent 1px 10%);
+  background: repeating-linear-gradient(90deg, var(--tissue-faint) 0 1px, transparent 1px 10%);
 }
 
 section { padding-block: clamp(4rem, 3rem + 5vw, 8rem); }
 
 table { border-collapse: collapse; width: 100%; font-size: 0.82rem; margin: 1.5rem 0; }
-th, td { text-align: left; padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--olive-deep); vertical-align: top; }
-th { color: var(--bone-dim); font-weight: 500; }
+th, td { text-align: left; padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--tissue-faint); vertical-align: top; }
+th { color: var(--ink-dim); font-weight: 500; }
 
 ul, ol { padding-left: 1.2rem; }
 li { margin-bottom: 0.4rem; }
-li::marker { color: var(--olive); }
+li::marker { color: var(--ink-dim); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 @media (prefers-contrast: more) {
-  :root { --bone-dim: #CFC9B8; --olive-deep: #6B7A3A; }
+  :root { --ink-dim: var(--ink-soft); --tissue-faint: var(--tissue); }
   body::after { display: none; }
 }
 
 /* One stroke style for every signal on the site: hero trace, demo trace, sparklines, thread targets. */
 .trace {
   fill: none;
-  stroke: var(--bronze);
+  stroke: var(--ink);
   stroke-width: 1.25;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
-.trace--rest { stroke: var(--olive); }
-.trace--drift { stroke: var(--verdigris); }
+.trace--rest { stroke: var(--tissue); }
+.trace--drift { stroke: var(--drift); }
 
 /* Field (Phase 3): a fixed canvas behind the content, added only after paint by boot.ts. */
 canvas.field {
@@ -155,10 +158,10 @@ body > header, body > main, body > footer { position: relative; z-index: 1; }
 html[data-field='on'] .hero-trace path.trace { opacity: 0; }
 /* Mask mode "halo": text carries a soft dark halo, so particles can pass close behind it. */
 html[data-field='on'][data-mask='halo'] :is(main, header, footer) :is(h1, h2, h3, p, li, dt, dd, th, td, figcaption, a) {
-  text-shadow: 0 0 6px var(--bg), 0 0 16px var(--bg), 0 0 28px var(--bg);
+  text-shadow: 0 0 6px var(--paper), 0 0 16px var(--paper), 0 0 28px var(--paper);
 }
 
 /* Sections are separated by space and one quiet rule, not labels. */
 .section { padding-top: 5rem; }
 .section > h2 { margin-bottom: 1.25rem; }
-hr.rule { border: 0; border-top: 1px solid var(--olive-deep); margin: 0 0 2rem; }
+hr.rule { border: 0; border-top: 1px solid var(--tissue-faint); margin: 0 0 2rem; }

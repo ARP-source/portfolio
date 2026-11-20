@@ -88,7 +88,7 @@ async function start(): Promise<void> {
 function showFps(): void {
   const el = document.createElement('output');
   el.className = 'mono meta';
-  el.style.cssText = 'position:fixed;right:1rem;bottom:1rem;z-index:300;background:var(--bg);padding:.4rem .6rem;border:1px solid var(--olive-deep)';
+  el.style.cssText = 'position:fixed;right:1rem;bottom:1rem;z-index:300;background:var(--paper);padding:.4rem .6rem;border:1px solid var(--tissue-faint)';
   document.body.append(el);
   setInterval(() => {
     const s = info.stats;

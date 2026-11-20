@@ -32,7 +32,7 @@ It writes `src/data/lighthouse.json` (git-ignored); the next build prints those 
 | `src/data/hero-trace.json` | The hero trace: one real GRABMyo recording, produced by `research/hero_trace.py` |
 | `.github/workflows/ci.yml` | check, build, budget, Lighthouse with the quality gate, rebuild with measured numbers, deploy to Vercel |
 
-Rules the code keeps: text is always HTML, never particles; colour means state (bone reads, olive rests, bronze signals, verdigris drifts); no number without a `source`; no analytics.
+Rules the code keeps: text is always HTML, never particles; ink on paper (tissue rests, ink is signal, drift bleeds blue and blue means only drift); no number without a `source`; no analytics.
 
 ## The field
 

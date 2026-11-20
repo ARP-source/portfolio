@@ -24,7 +24,7 @@ const desc = `${label}: ${first}${unit} at ${x0} to ${last}${unit} at ${x1}`;
     <path class="trace" d={d}></path>
     <circle cx={px(x1)} cy={py(last)} r="2" class="end"></circle>
   </svg>
-  <figcaption class="meta">{first}{unit} → <span class="signal">{last}{unit}</span> · {label}</figcaption>
+  <figcaption class="meta">{first}{unit} → <span>{last}{unit}</span> · {label}</figcaption>
 </figure>
 
 <style>
@@ -32,6 +32,6 @@ const desc = `${label}: ${first}${unit} at ${x0} to ${last}${unit} at ${x1}`;
   svg { display: block; overflow: visible; }
   .spark--card svg { width: 10rem; height: 2.5rem; }
   .spark--header svg { width: min(100%, 28rem); height: 6rem; }
-  .end { fill: var(--bronze-bright); }
+  .end { fill: var(--ink); }
   figcaption { margin-top: 0.4rem; }
 </style>

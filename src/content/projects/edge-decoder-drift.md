@@ -17,7 +17,7 @@ investigating:
   - { item: FALCON H1 baselines reproduced, done: true }
   - { item: Torch decoder baseline reproduced, done: false }
   - { item: M1/M2 multi-session monkey datasets, done: false }
-  - { item: Quantization sweep (FP32, FP16, INT8 PTQ, INT8 QAT, pruning), done: false }
+  - { item: "Quantization sweep (FP32, FP16, INT8 PTQ, INT8 QAT, pruning)", done: false }
   - { item: Power measurement harness (INA3221 rails), done: false }
   - { item: On-device recalibration experiments, done: false }
 audience: [neuro]

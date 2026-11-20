@@ -1,19 +1,24 @@
 /**
  * Single source of truth for colour and motion.
  * CSS custom properties are generated from this file at build time (see tokensCss),
- * and the particle shaders (Phase 3) read the same values as uniforms.
- * Colour means state: bone = reading, olive = rest, bronze = signal, verdigris = drift.
+ * and the particle shaders read the same values as uniforms.
+ *
+ * "Weil myelin": the page is a stained section on paper. Resting tissue is faint grey, a decoded
+ * signal is black ink (myelin taking the Weil stain), and when the signal drifts the stain fails and
+ * bleeds blue. Recalibration re-inks it. Drift blue is the only hue, and it appears only for drift.
+ * Contrast against paper: ink 14.9, ink-soft 9.7, ink-dim 5.9, drift 5.7, drift-deep 7.5 (text OK);
+ * tissue 1.7 and tissue-faint 1.3 are never used for text.
  */
 export const palette = {
-  bg: '#0C0D0A',
-  bone: '#E6E0CF',
-  boneDim: '#A9A493',
-  olive: '#7C8A45',
-  oliveBright: '#9DAA5C',
-  oliveDeep: '#3F4A22',
-  bronze: '#B4864F',
-  bronzeBright: '#D39A5A',
-  verdigris: '#5E8C7A',
+  paper: '#ECE8DE',
+  paperRaised: '#F4F1EA',
+  ink: '#161513',
+  inkSoft: '#3A3732',
+  inkDim: '#5C574E',
+  tissue: '#B9B2A2',
+  tissueFaint: '#D3CDBF',
+  drift: '#2F5C8A',
+  driftDeep: '#244A72',
 } as const;
 
 /**

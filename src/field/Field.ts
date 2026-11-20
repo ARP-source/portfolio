@@ -135,9 +135,9 @@ export class Field {
       uTrace: { value: this.#traceTex },
       uTraceN: { value: pts.length },
       uPixelRatio: { value: 1 },
-      uOlive: { value: c(palette.olive) },
-      uBronze: { value: c(palette.bronzeBright) },
-      uBone: { value: c(palette.bone) },
+      uTissue: { value: c(palette.tissue) },
+      uInk: { value: c(palette.ink) },
+      uDrift: { value: c(palette.drift) },
       uMask: { value: tex },
       uFade: { value: 0 },
     };

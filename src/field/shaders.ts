@@ -109,7 +109,7 @@ void main(){
   if(r>0.001) acc+=d/r*push*1800.0;
 
   vel+=acc*uDt;
-  // Activation: bronze where the recording spikes or the pointer touched, olive at rest.
+  // Activation: ink where the recording spikes or the pointer touched, tissue at rest.
   float act=max(uForm*smoothstep(0.15,0.8,abs(s)), push);
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
   if(uSnap>0.5){ vel=vec2(0.0); z=0.0; }
@@ -162,9 +162,9 @@ void main(){
 `;
 
 export const pointsFragment = /* glsl */ `
-uniform vec3 uOlive;
-uniform vec3 uBronze;
-uniform vec3 uBone;
+uniform vec3 uTissue;
+uniform vec3 uInk;
+uniform vec3 uDrift;
 uniform sampler2D uMask;   // 1 where text sits, blurred
 uniform float uFade;       // global fade-in, 0..1
 uniform float uMaskStrength;
@@ -174,9 +174,7 @@ varying float vRank;
 void main(){
   vec2 c=gl_PointCoord-0.5; float r2=dot(c,c);
   if(r2>0.25) discard;
-  vec3 col=mix(uOlive,uBronze,clamp(vAct,0.0,1.0));
-  // A small bright core reads as metal, no bloom pass needed.
-  col=mix(col,uBone,smoothstep(0.09,0.0,r2)*0.25*(0.4+vAct));
+  vec3 col=mix(uTissue,uInk,clamp(vAct,0.0,1.0));
   float edge=smoothstep(0.25,0.12,r2);
   float mask=texture2D(uMask,vec2(vScreen.x,1.0-vScreen.y)).r;
   float a=edge*mix(0.5,0.9,vRank)*(1.0-uMaskStrength*mask)*uFade;

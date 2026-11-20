@@ -41,17 +41,20 @@ async function start(): Promise<void> {
   performance.mark('field:import');
   const { Field } = await import('../field/Field');
   performance.mark('field:imported');
+  const layer = document.createElement('div');
+  layer.className = 'field-layer';
+  layer.setAttribute('aria-hidden', 'true');
   const canvas = document.createElement('canvas');
   canvas.className = 'field';
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.prepend(canvas);
+  layer.append(canvas);
+  document.body.prepend(layer);
 
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let field: InstanceType<typeof Field> | null = null;
   const fallback = (reason: string) => {
     field?.dispose();
     field = null;
-    canvas.remove();
+    layer.remove();
     delete root.dataset.field;
     info.state = 'static';
     info.reason = reason;

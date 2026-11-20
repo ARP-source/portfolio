@@ -49,6 +49,7 @@ const MASK_MODES: Record<MaskMode, { strength: number; pad: number; blur: number
 const FLOCK = { holdS: 1.6, kick: 0.25, kickMax: 0.22, catchUp: 1.2 };
 /** How long the hero takes to dissolve into the swarm; each particle's own release is a slice of it. */
 const RELEASE_MS = 700;
+const TOUCH = matchMedia('(pointer: coarse)').matches;
 /** Re-forming in place (reduced motion, or scrolling back before the hero has fully let go). */
 const FORM_MS = 1900;
 const TEXT_SELECTOR =
@@ -102,6 +103,8 @@ export class Field {
   /** hold: where the flock is held while k runs 0 -> 1 (the hero it left, or just above the screen). */
   #flock = { hold: 'free' as 'free' | 'hero' | 'top', k: 1, x: 0, y: 0, kick: 0 };
   #snapNext = false;
+  #sized = false;
+  #pr = 0;
   #form = { from: 0, to: 0, start: 0, value: 0 };
   /** Re-forming along the drawn routes: waits until the hero is on screen, then runs REFORM.totalS
    *  of simulation time (so a slow frame slows the whole procession instead of leaving dots behind). */
@@ -533,7 +536,14 @@ export class Field {
     s.material.uniforms.texPos!.value = s.gpu.getCurrentRenderTarget(s.pos).texture as Texture;
     s.material.uniforms.texVel!.value = s.gpu.getCurrentRenderTarget(s.vel).texture as Texture;
     this.#shared.uFade!.value = this.#fade;
+    // Everything this frame was placed from rects read at this scroll position; pin the canvas
+    // there, so if the page scrolls before the next frame the drawing travels with it.
+    this.#o.canvas.style.transform = `translate3d(${scrollX}px,${scrollY}px,0)`;
     this.#renderer.render(this.#scene, this.#camera);
+  }
+
+  #pixelRatio(): number {
+    return Math.min(devicePixelRatio || 1, this.stats.tier === 'high' ? 2 : 1.5);
   }
 
   #renderOnce(): void {
@@ -586,7 +596,7 @@ export class Field {
     const el = document.querySelector('.hero-trace svg');
     if (!el) return false;
     const r = el.getBoundingClientRect();
-    return r.bottom > this.#vh * 0.2 && r.top < this.#vh * 0.8;
+    return r.bottom > innerHeight * 0.2 && r.top < innerHeight * 0.8;
   }
 
   /** Enough of the hero on screen to watch it form. */
@@ -594,7 +604,10 @@ export class Field {
     const el = document.querySelector('.hero-trace svg');
     if (!el) return true;
     const r = el.getBoundingClientRect();
-    return r.top < this.#vh * 0.85 && r.bottom > this.#vh * 0.1;
+    // innerHeight, not the canvas height: on a phone the canvas keeps the tallest height seen.
+    // A line that sits at the bottom of a short screen still counts once it is mostly on screen.
+    const vh = innerHeight;
+    return r.top + r.height * 0.5 < vh && r.bottom > vh * 0.1;
   }
 
   /** Within a screen of the viewport: close enough that released particles can stream in. */
@@ -612,7 +625,7 @@ export class Field {
   #wantHero(): boolean | null {
     const el = document.querySelector('[data-field-release]');
     if (!el || !document.querySelector('.hero-trace svg')) return null;
-    return el.getBoundingClientRect().top > this.#vh;
+    return el.getBoundingClientRect().top > innerHeight;
   }
 
   /** Hand rect, gesture (cycle + EMG grip) and the slow turn, as 16 skinning matrices. */
@@ -686,12 +699,18 @@ export class Field {
   }
 
   #resize = (): void => {
+    // Phones resize the window as the address bar slides in and out while scrolling. Keep the
+    // tallest height seen at this width, so that doesn't reallocate the canvas, move the flock or
+    // re-measure every line of text mid-scroll; the extra rows just sit under the bar.
+    const sameWidth = innerWidth === this.#vw && this.#sized;
+    const h = sameWidth && TOUCH ? Math.max(this.#vh, innerHeight) : innerHeight;
+    if (sameWidth && h === this.#vh && this.#pr === this.#pixelRatio()) return;
+    this.#sized = true;
     this.#vw = innerWidth;
-    this.#vh = innerHeight;
-    const cap = this.stats.tier === 'high' ? 2 : 1.5;
-    const pr = Math.min(devicePixelRatio || 1, cap);
+    this.#vh = h;
+    const pr = (this.#pr = this.#pixelRatio());
     this.#renderer.setPixelRatio(pr);
-    this.#renderer.setSize(this.#vw, this.#vh, false);
+    this.#renderer.setSize(this.#vw, this.#vh, true);
     this.#shared.uViewport!.value = [this.#vw, this.#vh];
     this.#shared.uPixelRatio!.value = pr;
     const m = this.#mask;

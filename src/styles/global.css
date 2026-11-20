@@ -4,6 +4,8 @@
 *::before,
 *::after { box-sizing: border-box; }
 html {
+  position: relative;
+  min-height: 100%;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   color-scheme: light;
@@ -144,14 +146,23 @@ li::marker { color: var(--ink-dim); }
 .trace--rest { stroke: var(--tissue); }
 .trace--drift { stroke: var(--drift); }
 
-/* Field (Phase 3): a fixed canvas behind the content, added only after paint by boot.ts. */
-canvas.field {
-  position: fixed;
+/* Field (Phase 3): a canvas behind the content, added only after paint by boot.ts. It lives in the
+   document, not position: fixed, and Field moves it to the scroll position it drew for each frame:
+   phones scroll the page off the main thread, and a fixed canvas would then lag behind the hero it
+   draws. In the document it scrolls with the page until the next frame catches up. The layer
+   clips it so it never adds scroll length. */
+.field-layer {
+  position: absolute;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  overflow: hidden;
   z-index: 0;
   pointer-events: none;
+}
+canvas.field {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
 }
 body > header, body > main, body > footer { position: relative; z-index: 1; }
 .hero-trace path.trace { transition: opacity var(--dur-ui) var(--ease-spring); }

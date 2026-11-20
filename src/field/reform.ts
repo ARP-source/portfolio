@@ -1,9 +1,10 @@
 /**
  * Re-forming the hero after the visitor scrolls back up. The flock streams out of itself along the
  * route Raag drew: up the left side, over the top, down the right and back along to the line's left
- * end, where the trace draws itself from left to right like a pen. The hand's dots ride the same
- * stream, peel off, swoop in at the wrist and rise into place, so it fills in from the wrist up. The
- * shader (reformChunk in shaders.ts) does the motion; this file holds the timing and the route.
+ * end, where the trace draws itself from left to right like a pen. The hand's dots spiral out of
+ * the flock into a spinning tornado where the hand will stand, and the hand then builds out of it
+ * from the wrist to the fingertips. The shader (reformChunk in shaders.ts) does the motion; this
+ * file holds the timing and the route.
  */
 
 /** Seconds. Every particle has finished by REFORM.totalS. */
@@ -18,16 +19,20 @@ export const REFORM = {
   traceRunS: 1.0,
   /** How long a trace dot sits on its spot before it counts as landed (longer than a frame at 3x). */
   traceHoldS: 0.2,
-  /** Hand: how far along the route its dots peel off (0..1), the swoop round to the wrist, and the
-   *  rise to their points (the fingertips take the full time, the wrist about a third of it), so
-   *  the hand fills in from the wrist up. */
-  handBranch: 0.5,
-  handTurnS: 0.6,
-  handClimbS: 1.1,
+  /** Hand: the spiral in from the flock to the tornado, a moment of spinning once it has gathered,
+   *  the sweep that builds the hand from the wrist (first) to the fingertips (last), how long each
+   *  dot takes to drop from its orbit onto its point, and a short hold before it counts as landed. */
+  handInS: 0.9,
+  handSpinS: 0.8,
+  handBuildS: 1.4,
+  handLandS: 0.4,
+  handHoldS: 0.1,
+  /** Tornado spin, radians per second: fastest at the narrow foot, slower at the wide top. */
+  spinFoot: 6.5,
+  spinTop: 3.5,
   get totalS() {
     const trace = this.leaveS + this.traceRouteS + Math.max(this.traceSpreadS + 0.15, this.traceRunS) + this.traceHoldS;
-    const hand = this.leaveS + this.traceSpreadS + this.handBranch * (this.traceRouteS + this.traceSpreadS) +
-      this.handTurnS + this.handClimbS;
+    const hand = this.leaveS + this.handInS + this.handSpinS + this.handBuildS + this.handLandS + this.handHoldS;
     return Math.max(trace, hand);
   },
 };

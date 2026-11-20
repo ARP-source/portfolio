@@ -184,14 +184,17 @@ vec2 flockSlot(vec4 h, float ft){
  * Every dot leaves the flock from wherever it is flying and merges into the drawn route, so the
  * flock pours out of itself as one stream. Trace dots arrive at the line's left end in order, the
  * one bound for the right end first, then run along the line to their spots, so it draws from left
- * to right like a pen. Hand dots ride the same stream, peel off, swoop in at the wrist and rise to
- * their points, the lowest landing first, so the hand fills in from the wrist to the fingertips.
+ * to right like a pen. Hand dots spiral out of the flock into a tornado spinning where the hand will
+ * stand, narrow at the wrist and wide at the fingertips, each orbiting at its own point's height.
+ * A sweep then rises from the wrist: as it passes each dot's height, the dot drops out of its orbit
+ * onto its point, so the hand builds from the bottom up and eats the tornado as it goes.
  */
 const reformChunk = /* glsl */ `
 uniform vec2 uRoute[${ROUTE_N}];
 const float LEAVE=${f(REFORM.leaveS)};
 const float T_ROUTE=${f(REFORM.traceRouteS)}, T_SPREAD=${f(REFORM.traceSpreadS)}, T_RUN=${f(REFORM.traceRunS)}, T_HOLD=${f(REFORM.traceHoldS)};
-const float H_BRANCH=${f(REFORM.handBranch)}, H_TURN=${f(REFORM.handTurnS)}, H_CLIMB=${f(REFORM.handClimbS)};
+const float H_IN=${f(REFORM.handInS)}, H_SPIN=${f(REFORM.handSpinS)}, H_BUILD=${f(REFORM.handBuildS)}, H_LAND=${f(REFORM.handLandS)}, H_HOLD=${f(REFORM.handHoldS)};
+const float SPIN_FOOT=${f(REFORM.spinFoot)}, SPIN_TOP=${f(REFORM.spinTop)};
 vec2 routeAt(float t){
   float x=clamp(t,0.0,1.0)*${ROUTE_N - 1}.0; int i=int(min(floor(x),${ROUTE_N - 2}.0));
   vec2 r=mix(uRoute[i],uRoute[i+1],x-float(i));
@@ -203,19 +206,42 @@ float handHeight(vec2 uv){ return clamp((texture2D(uHandLocal,uv).y+1.0)*0.5,0.0
 // When it leaves the flock, and how long it then takes along the route (to the line's left end).
 float leaveAt(float seed){ return LEAVE*fract(seed*4.71); }
 float arriveAt(vec4 h, float seed){
-  return LEAVE+T_ROUTE+(isHand(h) ? fract(seed*2.31) : 1.0-traceU(h))*T_SPREAD;
+  return LEAVE+T_ROUTE+(1.0-traceU(h))*T_SPREAD;
 }
 // Eased a little: no lurch leaving the flock, and slow enough at the end to make the turn onto the line.
 float ease(float x){ x=clamp(x,0.0,1.0); return mix(x,x*x*(3.0-2.0*x),0.6); }
-float branchAt(vec4 h, float seed){
-  float l=leaveAt(seed); return l+H_BRANCH*(arriveAt(h,seed)-l);
+// Tornado: when the sweep reaches this dot's height and it drops onto its point.
+float landAt(vec2 uv){ return LEAVE+H_IN+H_SPIN+handHeight(uv)*H_BUILD; }
+// Its orbit: the altitude is its point's height with a little spread, so the column is continuous.
+// Returns the screen position; c is cos/sin of its angle (sin is toward the viewer).
+vec2 tornado(float seed, vec2 uv, float T, float spread, out vec2 c){
+  vec4 R4=uHandRect;
+  float alt=clamp(handHeight(uv)+(fract(seed*6.11)-0.5)*0.12,0.0,1.0);
+  float r=R4.z*(0.05+0.42*pow(alt,1.3))*(0.75+0.5*fract(seed*8.37))*spread;
+  float th=6.2832*fract(seed*3.17)+mix(SPIN_FOOT,SPIN_TOP,alt)*T;
+  c=vec2(cos(th),sin(th));
+  // The column leans and snakes a little, more at the top, like a real funnel.
+  float cx=R4.x+R4.z*0.5+sin(alt*4.0-T*2.2)*R4.z*0.05*alt;
+  float y=mix(R4.y+R4.w*0.98,R4.y+R4.w*0.04,alt);
+  // Seen from a little above: each ring is a flat ellipse.
+  return vec2(cx+r*c.x,y+r*0.12*c.y);
+}
+// How far a hand dot has dropped from its orbit onto its point: 0 orbiting .. 1 on it.
+float handLand(vec2 uv, float T){
+  float a=clamp((T-landAt(uv))/H_LAND,0.0,1.0); return a*a*(3.0-2.0*a);
+}
+// The hand's depth during a re-form: the tornado's own while spinning, the hand's once landed.
+float reformDepth(vec4 h, float seed, vec2 uv, float depth){
+  if(uReform<0.0 || !isHand(h)) return depth;
+  vec2 c; tornado(seed,uv,uReform,1.0,c);
+  return mix(c.y*0.8,depth,handLand(uv,uReform));
 }
 float reformDone(vec4 h, float seed, vec2 uv){
   if(uReform<0.0) return 1.0;
   // Trace: lands once it has sat on its spot for T_HOLD, never before it has fully joined the line.
   // The hold matters: one frame can carry the clock past its arrival, and landing while still a
   // frame short of the spot leaves it outside the lock, so it would wander back and leave a gap.
-  float end=isHand(h) ? branchAt(h,seed)+H_TURN+H_CLIMB*(0.35+0.65*handHeight(uv))
+  float end=isHand(h) ? landAt(uv)+H_LAND+H_HOLD
                       : arriveAt(h,seed)+max(traceU(h)*T_RUN,0.15)+T_HOLD;
   return step(end,uReform);
 }
@@ -240,28 +266,14 @@ vec2 reformWaypoint(vec4 h, float seed, vec2 uv, float T){
     if(T<ar) return onRoute(h,seed,T);
     float s; return traceLine(min(u,(T-ar)/T_RUN),seed,s);
   }
-  float tb=branchAt(h,seed);
-  if(T<tb) return onRoute(h,seed,T);
-  vec4 R4=uHandRect;
-  float o=handHeight(uv);
+  // Spiral in: from where it left the flock, round and down into its orbit, the ring closing in.
+  float l=leaveAt(seed), x=clamp((T-l)/H_IN,0.0,1.0), e=x*x*(3.0-2.0*x);
+  vec2 c; vec2 orbit=tornado(seed,uv,T,mix(2.4,1.0,e),c);
+  vec2 from=flockSlot(h,uFlockT-(uReform-l));
+  vec2 p=clamp(mix(from,orbit,e),m,uViewport-m);
+  // Built: the sweep has passed its height, so it drops out of the orbit onto its point.
   float depth; vec2 tg=handTarget(uv,depth);
-  // Wide enough to stay a cloud, not a line of dots on one path; it closes in as each lands.
-  vec2 jt=jitter(seed)*vec2(60.0,40.0);
-  // Where it enters: the wrist, under its own point, so the dots rise in columns, not through one spot.
-  vec2 wr=vec2(mix(R4.x+R4.z*0.5,tg.x,0.7),R4.y+R4.w*0.98);
-  float tt=T-tb;
-  if(tt<H_TURN){
-    // Peel off the stream and swoop round under the hand to the wrist.
-    float a=tt/H_TURN; a=a*a*(3.0-2.0*a);
-    vec2 p0=onRoute(h,seed,tb), c=vec2(max(p0.x,R4.x+R4.z*1.05),R4.y+R4.w*1.12);
-    return clamp((1.0-a)*(1.0-a)*p0+2.0*(1.0-a)*a*c+a*a*wr+jt,m,uViewport-m);
-  }
-  // Rise to its own point: the lowest arrive first, the fingertips last, with a slight sway that
-  // settles as it lands.
-  float a=clamp((tt-H_TURN)/(H_CLIMB*(0.35+0.65*o)),0.0,1.0);
-  float e=1.0-(1.0-a)*(1.0-a);
-  float side=(fract(seed*3.97)-0.5)*R4.z*0.25*sin(a*3.1416);
-  return mix(wr,tg,e)+vec2(side,0.0)+jt*(1.0-e);
+  return mix(p,tg,handLand(uv,T));
 }
 `;
 
@@ -443,6 +455,8 @@ void main(){
   // Re-forming, running along the line to its spot: ride the playing line exactly, so it draws clean.
   float ol=reformOnLine(H,P.w,uReform)*(1.0-reformDone(H,P.w,uv));
   if(ol>0.0) pos=mix(pos,reformWaypoint(H,P.w,uv,uReform),ol);
+  // The tornado turns in depth: dots on its far side are smaller and paler.
+  depth=reformDepth(H,P.w,uv,depth);
   float tw=threadWeight(H,P.w);
   if(tw>0.0){
     vec2 tt=threadTarget(P.w);

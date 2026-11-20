@@ -81,4 +81,3 @@ Vercel's own Git builds are switched off in `vercel.json`, because the deployed 
 - Fraunces and JetBrains Mono, SIL Open Font License 1.1 (`src/assets/fonts/OFL-*.txt`).
 - EMG: Jiang, N., Pradhan, A., & He, J. (2024). GRABMyo (version 1.1.0). PhysioNet. doi:10.13026/89dm-f662, CC BY 4.0. Pradhan, A., He, J. & Jiang, N. Sci Data 9, 733 (2022).
 - three.js, MIT licence.
-- The hand mesh: TODO(anuraag): source and licence.

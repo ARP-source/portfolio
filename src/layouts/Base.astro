@@ -12,7 +12,7 @@ interface Props {
   description?: string;
 }
 const { title, description = site.description } = Astro.props;
-const fullTitle = title ? `${title} · ${site.name}` : `${site.name}: ${site.thesis}`;
+const fullTitle = title ? `${title} · ${site.name}` : `${site.name} · ${site.thesis}`;
 // Vercel serves clean URLs (/work/warden), while the build writes /work/warden.html.
 const path = Astro.url.pathname.replace(/\.html$/, '').replace(/\/index$/, '/');
 const notFound = path === '/404';

@@ -1,7 +1,7 @@
 ---
 title: Warden
 oneLiner: An autonomous loop that red-teams an AI agent's tool-calling permissions, patches what it finds, and proves the patches didn't break normal behaviour. It judges structured tool-call events, never strings.
-role: "TODO(anuraag): your role"
+role: Solo
 dates: "2026"
 status: prototype
 stack: [Python, Supabase Postgres, W&B Weave, marimo, Vercel]
@@ -33,18 +33,18 @@ Agents with tools fail when they are talked into calling a tool they shouldn't. 
 
 - A live target agent with four mock tools across permission tiers 0 to 3 (lookup, email, refund, role change) writing real rows to Postgres.
 - 46 attacks in 15 documented families, varied and paraphrased per round.
-- Every tool call is judged twice: by an oracle that decides whether it was in scope (not patchable) and by the policy that decides whether enforcement allowed it (patchable). The defender may only patch the policy and the system prompt.
+- Every tool call is judged twice, once by an oracle that decides whether it was in scope (not patchable) and once by the policy that decides whether enforcement allowed it (patchable). The defender may only patch the policy and the system prompt.
 - Intent breaches (the agent proposed an out-of-scope call) and enforcement breaches (it actually executed) are tracked separately.
 - Every attempt goes into a hash-chained audit ledger. No payment processor or mail server is ever contacted.
 
 ## Result
 
-Latest posture report (run `warden-v3`): 3,827 attack attempts, 3.4% attack success (proposed out of scope), 0.1% enforcement breach (actually executed), benign suite 100% with 0% false refusals, 28 patches applied and 8 reverted for regression, $15.88 of a $70 ceiling, audit chain verified over 81,219 entries. Source: `reports/posture-latest.md`.
+The latest posture report (run `warden-v3`) covers 3,827 attack attempts, with 3.4% attack success (proposed out of scope), 0.1% enforcement breach (actually executed), benign suite 100% with 0% false refusals, 28 patches applied and 8 reverted for regression, $15.88 of a $70 ceiling, and an audit chain verified over 81,219 entries. The source is `reports/posture-latest.md`.
 
 ## What failed
 
-Prompt defences leak. Intent breaches fell and then plateaued; `refusal_suppression` still gets the agent to propose an out-of-scope call 20% of the time. Enforcement catches nearly all of it, but not all: 0.1% executed in the latest run.
+Prompt defences leak. Intent breaches fell and then plateaued, and `refusal_suppression` still gets the agent to propose an out-of-scope call 20% of the time. Enforcement catches nearly all of it, but not all of it, and 0.1% executed in the latest run.
 
 ## What's next
 
-TODO(anuraag): next steps for Warden.
+Find out why refusal suppression still gets the agent to propose an out-of-scope call one time in five, and close the last 0.1% at the enforcement layer, where a breach actually executes.

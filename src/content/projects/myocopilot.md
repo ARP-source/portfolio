@@ -1,8 +1,8 @@
 ---
 title: MyoCopilot
 oneLiner: An adaptive myoelectric control copilot that notices when EMG drifts and asks the user for a few fresh samples before control fails.
-role: "TODO(anuraag): your role (solo build or team?)"
-dates: "2026, hackathon build · TODO(anuraag): exact dates"
+role: Solo
+dates: "2026, hackathon build"
 status: prototype
 stack: [Python, FastAPI, WebSockets, SciPy, scikit-learn, React, TypeScript, three.js, GLM-5.3-Flash]
 links:
@@ -23,9 +23,7 @@ A gesture classifier for a prosthetic hand is trained on a clean signal, then el
 
 ## Result
 
-TODO(anuraag): real NinaPro results pending.
-
-The evaluation file in the repo (`eval/results.json`) was produced with `mock_mode: true`: a network-free RMS heuristic on structured synthetic signals. It shows the pipeline runs end to end. It is not evidence about real EMG, so no accuracy number is reported here.
+The evaluation file in the repo (`eval/results.json`) was produced with `mock_mode` switched on, which swaps in a network-free RMS heuristic on structured synthetic signals. It shows the pipeline runs end to end. It is not evidence about real EMG, so no accuracy number is reported here.
 
 ## What failed
 
@@ -35,4 +33,3 @@ The evaluation so far never touches real EMG with the real classifier, so the ce
 
 - Run the full loop on real NinaPro DB2 subjects and report accuracy before drift, after drift and after recalibration.
 - Compare against the classical baseline already in the repo (`eval/baselines.py`, k-NN on RMS).
-- TODO(anuraag): record the demo video; the README link is still a placeholder.

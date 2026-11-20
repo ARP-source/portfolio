@@ -23,8 +23,8 @@ const lh = Object.values(found)[0]?.default;
     {
       lh && (
         <p class="lh">
-          Lighthouse, measured in CI on {lh.measuredAt.slice(0, 10)}: performance {lh.mobile.performance} mobile /{' '}
-          {lh.desktop.performance} desktop, accessibility {lh.mobile.accessibility}{lh.field && <>. With the particles forced on in software rendering: {lh.field.mobile.performance} / {lh.field.desktop.performance}</>}.
+          Lighthouse in CI on {lh.measuredAt.slice(0, 10)} scored performance {lh.mobile.performance} on mobile and{' '}
+          {lh.desktop.performance} on desktop, accessibility {lh.mobile.accessibility}{lh.field && <>. With the particles forced on in software rendering, performance is {lh.field.mobile.performance} and {lh.field.desktop.performance}</>}.
         </p>
       )
     }

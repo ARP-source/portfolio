@@ -11,7 +11,7 @@ const { metric, size = 'card', thread } = Astro.props;
 <p class={`metric metric--${size} mono`}>
   <span class="value" data-thread-line={thread} data-thread-home={thread ? '' : undefined}>{metric.value}</span>
   {metric.unit && <span class="unit">{metric.unit}</span>}
-  <span class="label meta">{metric.label} · source: {metric.source}</span>
+  <span class="label meta">{metric.label} · from {metric.source}</span>
 </p>
 
 <style>

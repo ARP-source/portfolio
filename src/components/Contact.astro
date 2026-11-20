@@ -10,7 +10,6 @@ import { site } from '../site.config';
     {site.email && <li><a href={`mailto:${site.email}`}>{site.email}</a></li>}
     {site.linkedin && <li><a href={site.linkedin}>LinkedIn</a></li>}
   </ul>
-  {!site.email && <p class="todo">TODO(anuraag): email and LinkedIn go in src/site.config.ts.</p>}
 </section>
 
 <style>

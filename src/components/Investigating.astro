@@ -10,7 +10,7 @@ const done = items.filter((i) => i.done).length;
     {
       items.map((i) => (
         <li class={i.done ? 'done' : ''}>
-          <span aria-hidden="true">{i.done ? '■' : '□'}</span> <span class="sr-only">{i.done ? 'Done:' : 'Open:'}</span>
+          <span aria-hidden="true">{i.done ? '■' : '□'}</span> <span class="sr-only">{i.done ? 'Done.' : 'Not done.'}</span>
           {i.item}
         </li>
       ))

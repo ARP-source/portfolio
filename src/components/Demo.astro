@@ -25,7 +25,7 @@ const W = 960, H = 160;
     <p>
       GRABMyo is a public dataset in which 43 people made the same hand gestures on day 1, day 8 and day 29, with the
       electrodes taken off and put back on in between. Below is one of them. A classifier trained on their day-1
-      recording runs in this page: hold a gesture to replay it, then jump four weeks ahead.
+      recording runs in this page. Hold a gesture to replay it, then jump four weeks ahead.
     </p>
   </div>
 
@@ -53,8 +53,8 @@ const W = 960, H = 160;
             </g>
           </svg>
           <figcaption class="meta" data-field-nomask>
-            What the classifier sees. Each cloud is where it expects a gesture to land; each dot is one 200 ms window of
-            the recording, filled if read correctly, hollow if not.<span class="ghost-note"> Dashed: the day-1 clouds.</span><span class="turn-note"> Drag to turn it.</span>
+            What the classifier sees. Each cloud is where it expects a gesture to land. Each dot is one 200 ms window of
+            the recording, filled if it was read correctly and hollow if not.<span class="ghost-note"> The dashed outlines are the day-1 clouds.</span><span class="turn-note"> Drag to turn it.</span>
           </figcaption>
         </figure>
         <div class="hand-slot" data-field-hand aria-hidden="true"></div>
@@ -95,7 +95,7 @@ const W = 960, H = 160;
           </div>
           <p class="dim">Same person, same gestures, four weeks later. The model is still the one trained on day 1.</p>
           <p class="after" data-after-skip hidden>
-            Most of the loss is in {NAME[worst]}: the day-1 model reads it as {NAME[worstAs]} more often
+            Most of the loss is in {NAME[worst]}. The day-1 model reads it as {NAME[worstAs]} more often
             than not. Pick it and hold.
           </p>
         </li>
@@ -129,7 +129,7 @@ const W = 960, H = 160;
         </div>
       </dl>
       <p class="meta readout-note">
-        Share of held-out 200 ms windows classified correctly: day-1 repetitions 6 and 7, day-29 repetitions 4 to 7.
+        Share of held-out 200 ms windows classified correctly, tested on day-1 repetitions 6 and 7 and day-29 repetitions 4 to 7.
         Recalibration uses day-29 repetitions 1 to 3, never the ones it is tested on.
       </p>
       <p class="status" role="status" aria-live="polite" data-status></p>
@@ -137,28 +137,28 @@ const W = 960, H = 160;
   </div>
 
   <p class="honesty mono">
-    Replayed public data: GRABMyo, participant {P}, day 1 vs day 29. Classifier: LDA on time-domain features, running
-    in your browser. Not MyoCopilot's production model.
+    This replays public GRABMyo data from participant {P}, day 1 against day 29, through an LDA on time-domain features
+    that runs in your browser. It is not MyoCopilot's production model.
   </p>
 
   <div class="col population">
     <p>
       Across all {drift.participants} participants, with the same pipeline and nothing tuned per person, the day-1 model
-      scores {pm('day1')} on day 1 and {pm('day29')} on day 29; {drift.summary.drop.participantsWithDrop} of
+      scores {pm('day1')} on day 1 and {pm('day29')} on day 29, and {drift.summary.drop.participantsWithDrop} of
       {drift.participants} get worse. Adding three day-29 repetitions brings it to {pm('recal3')}. The demo uses
       participant {P} because their drop ({Math.round((acc.day1 - acc.day29) * 100)} points) is the closest to the
       median, so it is a typical case, not the most dramatic one.
     </p>
     <p class="meta">
       Bipolar pairs F1–F9 to F8–F16, 10–500 Hz band-pass and 60 Hz notch, 200 ms windows every 50 ms, 40 features
-      (log MAV, log RMS, log waveform length, zero crossings, slope sign changes), shrinkage LDA. Script:
-      <code>research/drift_pipeline.py</code> in <a href={`${site.github}/portfolio`}>this site's repository</a>,
+      (log MAV, log RMS, log waveform length, zero crossings, slope sign changes), shrinkage LDA. The numbers
+      come from <code>research/drift_pipeline.py</code> in <a href={`${site.github}/portfolio`}>this site's repository</a>,
       measured {drift.measuredAt}.
     </p>
   </div>
   <p class="cite col">
-    Data: GRABMyo v1.1.0 (Jiang, Pradhan &amp; He, PhysioNet, 2024),
-    <a href="https://doi.org/10.13026/89dm-f662">doi:10.13026/89dm-f662</a>, CC BY 4.0. Dataset paper: Pradhan, He &amp;
+    Data from GRABMyo v1.1.0 (Jiang, Pradhan &amp; He, PhysioNet, 2024),
+    <a href="https://doi.org/10.13026/89dm-f662">doi.org/10.13026/89dm-f662</a>, CC BY 4.0, described in Pradhan, He &amp;
     Jiang, Sci Data 9, 733 (2022).
   </p>
 </section>

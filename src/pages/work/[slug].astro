@@ -41,7 +41,7 @@ const statusLabel = { shipped: 'Shipped', 'in-progress': 'In progress', prototyp
         {p.sparkline && <Sparkline slug={project.id} size="header" {...p.sparkline} thread="home" />}
         {p.keyMetric && <KeyMetric metric={p.keyMetric} size="header" thread={line === 'result' ? project.id : undefined} />}
       </div>
-      {p.sparkline && <p class="meta">series source: {p.sparkline.source}</p>}
+      {p.sparkline && <p class="meta">series from {p.sparkline.source}</p>}
     </header>
     {p.investigating && <Investigating items={p.investigating} />}
     <div class="body col">

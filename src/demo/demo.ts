@@ -167,7 +167,7 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
     const k = votes.indexOf(Math.max(...votes));
     const sure = Math.round((conf[k]! / votes[k]!) * 100);
     const wrongShare = 1 - votes[st.gesture]! / n;
-    let msg = `Classified: ${NAME[k]}, ${sure}% confident.`;
+    let msg = `Read as ${NAME[k]}, ${sure}% confident.`;
     if (k !== st.gesture) msg += ` You held ${NAME[st.gesture]}.`;
     else if (wrongShare > 0.05) msg += ` ${Math.round(wrongShare * 100)}% of windows were misread.`;
     if (mode === 'recal' && heldFor >= ROUND_S) msg = addRound();
@@ -214,11 +214,11 @@ export async function mountDemo(root: HTMLElement): Promise<void> {
     $('[data-recal-values]').textContent = st.recal.map(pct).join(' · ');
     $('[data-rounds]').textContent = `${st.rounds} of ${ROUNDS}`;
     emit('emg:recalibrated', { accuracy: a, baseline: A1 });
-    if (st.rounds < ROUNDS) return `Round ${st.rounds} of ${ROUNDS} added: ${pct(a)} of held-out day-29 windows right.`;
+    if (st.rounds < ROUNDS) return `Round ${st.rounds} of ${ROUNDS} added. The model now gets ${pct(a)} of held-out day-29 windows right.`;
     recalBtn.disabled = recalAdd.disabled = true;
     $('[data-done]').hidden = false;
     setStep(0);
-    return `Recalibrated: ${pct(a)} on day 29, from ${pct(A29)} before, with three repetitions of each gesture.`;
+    return `Recalibrated to ${pct(a)} on day 29, up from ${pct(A29)}, with three repetitions of each gesture.`;
   };
 
   const reset = () => {

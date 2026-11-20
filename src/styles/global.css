@@ -66,14 +66,6 @@ a:hover { text-decoration-color: var(--ink); }
 .dim { color: var(--ink-dim); }
 code { font-size: 0.86em; color: var(--ink); }
 
-/* TODO markers stay visible on purpose: they are honest gaps, not decoration. */
-.todo, p:has(> .todo-text) {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: var(--ink-dim);
-  border-left: 2px solid var(--tissue);
-  padding-left: 0.75rem;
-}
 
 .skip {
   position: absolute;

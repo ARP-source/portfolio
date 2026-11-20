@@ -4,14 +4,12 @@ export const site = {
   thesis: 'I build adaptive systems for signals that drift.',
   role: 'Student at San José State University',
   description:
-    'Anuraag Punnam builds adaptive systems for signals that drift: EMG drift detection, compressed neural decoders on embedded hardware, and verified model routing.',
+    'Anuraag Punnam builds adaptive systems for signals that drift, from EMG drift detection to compressed neural decoders on embedded hardware and verified model routing.',
   github: 'https://github.com/ARP-source',
-  // TODO(anuraag): add an email address and LinkedIn URL for the contact section.
-  email: '',
-  linkedin: '',
-  // The site's address, for canonical URLs and link previews. The Vercel production address until
-  // a domain of your own is set up. TODO(anuraag): your own domain, if you get one.
-  url: 'https://signal-portfolio-pi.vercel.app',
+  email: 'anuraag.punnam@sjsu.edu',
+  linkedin: 'https://www.linkedin.com/in/anuraag-punnam-3219a2281/',
+  // The site's address, for canonical URLs and link previews.
+  url: 'https://anuraagp.vercel.app',
 } as const;
 
 export type Audience = 'neuro' | 'swe';
@@ -27,5 +25,5 @@ export const intros: Record<'home' | Audience, string> = {
   home: "Right now that means shrinking an intracortical BCI decoder to run on a Jetson Orin Nano, and checking whether it can still recalibrate on the device once the signal moves.",
   neuro:
     "Right now that means shrinking an intracortical BCI decoder to run on a Jetson Orin Nano, and checking whether it can still recalibrate on the device once the signal moves. The EMG projects below are about the same problem in the forearm.",
-  swe: "A lot of that is plain software work: services that check their own output, eval loops, and dashboards that tell you when a model has stopped doing its job. The projects below are ordered with that in mind.",
+  swe: "A lot of that is plain software work, like services that check their own output, eval loops, and dashboards that tell you when a model has stopped doing its job. The projects below are ordered with that in mind.",
 };

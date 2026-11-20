@@ -1,5 +1,5 @@
 /**
- * The hero hand: dots sampled from Raag's sculpted hand mesh and bound to a 16-bone skeleton
+ * The hero hand: dots sampled from an open-source sculpted hand mesh and bound to a 16-bone skeleton
  * fitted to it (scripts/hand-points.py writes public/hand.bin and hand-rig.json). Each frame the
  * CPU poses the skeleton (a few dozen small matrix products) and the GPU skins the dots.
  * Model space: y spans -1..1; it is a left hand with the palm facing -z.

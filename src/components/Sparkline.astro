@@ -18,7 +18,7 @@ const px = (v: number) => P + ((v - x0) / (x1 - x0 || 1)) * (W - 2 * P);
 const py = (v: number) => H - P - ((v - y0) / (y1 - y0 || 1)) * (H - 2 * P);
 const d = x.map((xv, i) => `${i ? 'L' : 'M'}${px(xv).toFixed(1)} ${py(y[i]!).toFixed(1)}`).join('');
 const first = y[0]!, last = y[y.length - 1]!;
-const desc = `${label}: ${first}${unit} at ${x0} to ${last}${unit} at ${x1}`;
+const desc = `${label}, ${first}${unit} at ${x0} to ${last}${unit} at ${x1}`;
 ---
 
 <figure class={`spark spark--${size}`} style={`view-transition-name: spark-${slug}`}>

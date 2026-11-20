@@ -1,22 +1,18 @@
----
-import PhotoSlot from './PhotoSlot.astro';
----
-
 <section id="about" class="wrap section" aria-labelledby="about-title" data-section="about">
   <h2 id="about-title">About</h2>
   <div class="col">
     <p>
       I got into this through robots. I competed in FIRST Robotics, and at De Anza I was president of the BattleBots
-      club. I'm at San José State now.
+      club. Now I'm in my third year at San José State, studying computer science and statistics.
     </p>
-    <p class="todo">TODO(anuraag): two or three sentences in your own words: your major and year, how you got from robots to EMG and BCIs, and what you want to work on next.</p>
-  </div>
-  <div class="photos">
-    <PhotoSlot caption="BattleBots, De Anza: club president" />
-    <PhotoSlot caption="FIRST Robotics" />
+    <p>
+      A robot does what its code tells it. A body is harder to read. The signal from a forearm muscle looks different
+      after the sensor comes off and goes back on, and a model trained yesterday starts guessing today. Most of my work
+      is catching that change and correcting for it, which is where the statistics turned out to matter.
+    </p>
+    <p>
+      What I want to build is a way of reading those signals that still holds up a month later, so a prosthetic hand
+      does what the person wearing it means, every time they put it on.
+    </p>
   </div>
 </section>
-
-<style>
-  .photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 16rem)); gap: 1.5rem; margin-top: 2rem; }
-</style>

@@ -5,10 +5,9 @@ interface Props { project: CollectionEntry<'projects'>; index: number }
 const { project, index } = Astro.props;
 const p = project.data;
 const status = { shipped: '', 'in-progress': 'in progress', prototype: 'prototype' }[p.status];
-// Dates may still carry a TODO; the card shows only the finished part.
-const when = p.dates.split('·')[0]!.trim();
+const when = p.dates;
 const km = p.keyMetric;
-const label = km ? `${km.label[0]!.toUpperCase()}${km.label.slice(1)}: ` : '';
+const label = km ? `${km.label[0]!.toUpperCase()}${km.label.slice(1)} · ` : '';
 // The field draws one line per card (Phase 5): its series when it has one, else under its result,
 // else under its title. Its page draws the same project's line, so the dots carry on there.
 const line = p.sparkline ? 'spark' : km ? 'result' : 'title';

@@ -1,7 +1,7 @@
 ---
 title: Sentinel-OR
 oneLiner: An offline surgical assistant prototype that watches a recorded procedure, fires alerts from code, has three agents explain them with cited sources, and keeps a tamper-evident audit log.
-role: "TODO(anuraag): your role"
+role: Solo
 dates: "2026, UCSC AI Hackathon (ASUS Local AI track)"
 status: prototype
 stack: [Python, FastAPI, OpenCV, vLLM, React, TypeScript, ASUS Ascent GX10]
@@ -17,13 +17,13 @@ In an operating room, an assistant that explains an alert has to be fast, offlin
 ## Setup
 
 - Runs entirely on one ASUS Ascent GX10 (NVIDIA GB10, 128 GB unified memory). Nothing calls the internet at runtime.
-- Replays a recorded laparoscopic video and patient vitals; a code rule fires the blood-pressure alert, never a model.
+- Replays a recorded laparoscopic video and patient vitals. A code rule fires the blood-pressure alert, never a model.
 - Three agents (surgical, anesthesia, record) explain the alert in two rounds, each sentence citing source ids from its own evidence. Convergence and the team question are decided in code.
 - Every alert, agent message and presenter action goes into an append-only log where each entry carries the SHA-256 of the one before it. A post-op report is drafted from that log.
 
 ## Result
 
-A working prototype through milestone M4a (audit log and post-op report). TODO(anuraag): add measured numbers from `scripts/pitch_numbers.py` once they exist; the repo says not to quote unmeasured values.
+A working prototype through milestone M4a (audit log and post-op report).
 
 ## What failed
 

@@ -15,15 +15,18 @@ export const HAND_CAM = 5.0;
 
 /** Per finger (index, middle, ring, pinky, thumb): [base, middle, tip] flexion and base spread, degrees. */
 export type Pose = [number, number, number, number][];
-const fist: [number, number, number, number] = [80, 95, 60, 0];
+/** Fist: less bend at the knuckle and more in the finger, so the tips tuck in under a smooth row
+ *  of knuckles; the fingers close up toward each other and the thumb wraps across the front. */
+const fist: Pose = [[68, 105, 65, 3], [72, 108, 65, 0], [75, 108, 65, -3], [78, 108, 65, -6]];
+const thumbWrap: [number, number, number, number] = [40, 70, 50, 0];
 export const POSES: Record<'rest' | 'close' | 'open' | 'pinch' | 'point', Pose> = {
   rest: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-  close: [fist, fist, fist, fist, [25, 35, 30, 0]],
+  close: [...fist, thumbWrap],
   open: [[-12, -5, 0, -6], [-12, -5, 0, 0], [-12, -5, 0, 5], [-12, -5, 0, 10], [-15, -5, 0, 0]],
   // Thumb-index opposition.
   pinch: [[40, 45, 30, 0], [10, 15, 10, 0], [12, 18, 12, 0], [15, 20, 12, 0], [30, 30, 25, 0]],
   // Index extension.
-  point: [[-5, 0, 0, 0], fist, fist, fist, [25, 35, 30, 0]],
+  point: [[-5, 0, 0, 0], fist[1]!, fist[2]!, fist[3]!, thumbWrap],
 };
 /** The four GRABMyo gestures the demo uses, starting from the sculpted pose. */
 export const SEQUENCE: (keyof typeof POSES)[] = ['rest', 'close', 'open', 'pinch', 'point'];

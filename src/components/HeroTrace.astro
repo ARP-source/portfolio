@@ -18,9 +18,8 @@ const d = tape.map((v, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(1)} ${(MID - 
     <line class="baseline" x1="0" x2={W} y1={MID} y2={MID}></line>
     <g class="tape"><path class="trace" d={d}></path></g>
   </svg>
-  <figcaption class="meta">
-    Forearm EMG during a wrist flexion, 750 ms. GRABMyo dataset, participant 1, day 1
-    <span class="sr-only">({trace.channel}, {trace.filter})</span>.
+  <figcaption>
+    Forearm EMG during a wrist flexion, 750 ms. GRABMyo dataset, participant 1, day 1.<span class="sr-only"> {trace.channel}, {trace.filter}.</span>
   </figcaption>
 </figure>
 
@@ -31,5 +30,5 @@ const d = tape.map((v, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(1)} ${(MID - 
   @keyframes tape { to { transform: translateX(-2400px); } }
   @media (prefers-reduced-motion: reduce) { .tape { animation: none; } }
   .baseline { stroke: var(--olive-deep); stroke-width: 1; vector-effect: non-scaling-stroke; }
-  figcaption { margin-top: 0.75rem; }
+  figcaption { margin-top: 0.75rem; font-size: 0.85rem; color: var(--bone-dim); }
 </style>

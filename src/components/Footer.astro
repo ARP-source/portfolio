@@ -18,34 +18,14 @@ const lh = Object.values(found)[0]?.default;
 
 <footer class="site-footer wrap">
   <hr class="rule" />
-  <div class="cols meta">
-    <ul class="plain">
-      <li>{site.name}</li>
-      <li><a href={site.github}>github.com/ARP-source</a></li>
-      <li><a href="/changelog">changelog</a></li>
-    </ul>
-    <p>
-      Set in Fraunces and JetBrains Mono (SIL OFL 1.1).<br />
-      EMG data: GRABMyo v1.1.0, CC BY 4.0,
-      <a href="https://doi.org/10.13026/89dm-f662">doi:10.13026/89dm-f662</a>.<br />
-      No analytics, no trackers.
-    </p>
+  <div class="row">
+    <p>{site.name}, {new Date().getFullYear()}. <a href="/changelog">Changelog</a></p>
     {
       lh && (
-        <p>
-          Lighthouse {lh.lighthouse}, home page, measured in CI {lh.measuredAt.slice(0, 10)}:<br />
-          mobile performance <span class="signal">{lh.mobile.performance}</span> · desktop{' '}
-          <span class="signal">{lh.desktop.performance}</span> · accessibility{' '}
-          <span class="signal">{lh.mobile.accessibility}</span> · best practices{' '}
-          <span class="signal">{lh.mobile.bestPractices}</span>. Headless Chrome has no GPU, so that run
-          shows the static trace.
-          {lh.field && (
-            <>
-              {' '}With the particle field forced on in software WebGL: mobile performance{' '}
-              <span class="signal">{lh.field.mobile.performance}</span> · desktop{' '}
-              <span class="signal">{lh.field.desktop.performance}</span>.
-            </>
-          )}
+        <p class="lh">
+          Lighthouse, measured in CI on {lh.measuredAt.slice(0, 10)}: performance {lh.mobile.performance} mobile /{' '}
+          {lh.desktop.performance} desktop, accessibility {lh.mobile.accessibility}
+          {lh.field && <>. With the particles forced on in software rendering: {lh.field.mobile.performance} / {lh.field.desktop.performance}</>}.
         </p>
       )
     }
@@ -53,10 +33,8 @@ const lh = Object.values(found)[0]?.default;
 </footer>
 
 <style>
-  .site-footer { padding-block: 4rem 3rem; }
-  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.5rem 2.5rem; }
-  .cols p { margin: 0; }
-  .plain { list-style: none; margin: 0; padding: 0; }
-  .plain li { margin: 0; }
-  .plain a { display: inline-block; padding-block: 0.3rem; }
+  .site-footer { padding-block: 4rem 3rem; font-size: 0.85rem; color: var(--bone-dim); }
+  .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem 2rem; }
+  .row p { margin: 0; }
+  .lh { max-width: 34rem; }
 </style>

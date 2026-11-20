@@ -48,6 +48,7 @@ uniform float uPhase;       // playback position along the recording, in trace l
 uniform vec3 uPointer;      // x, y, strength
 uniform float uScrollDy;    // px scrolled since last step
 uniform float uScroll;      // total scrollY, for the swarm's parallax homes
+uniform float uSnap;        // 1 for a single step: place every particle at its swarm home, at rest
 uniform sampler2D uHome;    // xy swarm home (0..1), z size rank, w trace u
 uniform sampler2D uTrace;   // N x 1, r = sample in [-1, 1]
 uniform float uTraceN;
@@ -111,6 +112,7 @@ void main(){
   // Activation: bronze where the recording spikes or the pointer touched, olive at rest.
   float act=max(uForm*smoothstep(0.15,0.8,abs(s)), push);
   float z=mix(V.z,act,1.0-exp(-uDt*6.0));
+  if(uSnap>0.5){ vel=vec2(0.0); z=0.0; }
   gl_FragColor=vec4(vel,z,1.0);
 }
 `;
@@ -125,9 +127,9 @@ void main(){
   pos.y-=uScrollDy*0.3*(1.0-uForm);
   if(uForm<0.5){
     float span=uViewport.y+2.0*WRAP_M;
+    // Keep each particle within half a band of its home: one wrap, never a band that hops every frame.
     float hy=swarmHome(H).y;
-    if(pos.y-hy>0.5*span) pos.y-=span;
-    else if(hy-pos.y>0.5*span) pos.y+=span;
+    pos.y=hy+mod(pos.y-hy+0.5*span,span)-0.5*span;
   }
   // Once the trace formation has settled, lock particles to the line: no spring lag while it plays.
   float lock=smoothstep(0.85,1.0,uForm);
@@ -135,6 +137,7 @@ void main(){
     float s; vec2 target=traceTarget(H,P.w,s);
     pos=mix(pos,target,lock);
   }
+  if(uSnap>0.5) pos=swarmHome(H);
   gl_FragColor=vec4(pos,P.z,P.w);
 }
 `;

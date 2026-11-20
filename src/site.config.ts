@@ -23,9 +23,8 @@ export const orderings: Record<'home' | Audience, string[]> = {
 };
 
 export const intros: Record<'home' | Audience, string> = {
-  home:
-    "Right now I'm compressing an intracortical BCI decoder to run on a Jetson Orin Nano and testing whether it can still recalibrate once the signal drifts. I also built MyoCopilot, a myoelectric controller that asks for a few fresh samples when the EMG starts to drift.",
+  home: "Right now that means shrinking an intracortical BCI decoder to run on a Jetson Orin Nano, and checking whether it can still recalibrate on the device once the signal moves.",
   neuro:
-    'Most of my work is about what happens to a decoder after the lab: electrodes get re-seated, the signal shifts between sessions, and accuracy drops without anyone noticing.',
-  swe: 'On the software side I build things that check their own output. Downshift starts on the cheapest model and only escalates when an answer fails a check. Warden attacks an AI agent’s tool permissions, patches what it finds, and re-runs normal behaviour to prove nothing broke.',
+    "Right now that means shrinking an intracortical BCI decoder to run on a Jetson Orin Nano, and checking whether it can still recalibrate on the device once the signal moves. The EMG projects below are about the same problem in the forearm.",
+  swe: "A lot of that is plain software work: services that check their own output, eval loops, and dashboards that tell you when a model has stopped doing its job. The projects below are ordered with that in mind.",
 };

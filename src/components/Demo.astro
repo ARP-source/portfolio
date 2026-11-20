@@ -1,44 +1,26 @@
 ---
-// Phase 2: the static, readable version of the demo. Phase 4 enhances this markup with
-// replayed EMG, the in-browser LDA and the guided sequence. Without JS this is what everyone sees.
+// Phase 2/3: a short, readable version. Phase 4 adds the interactive demo (replayed EMG, LDA in the
+// browser, recalibration) to this section; until then it says only what is true today.
 ---
 
 <section id="demo" class="wrap section" aria-labelledby="demo-title" data-section="demo">
-  <h2 id="demo-title">Why drift matters</h2>
+  <h2 id="demo-title">The drift problem, in one example</h2>
   <div class="col">
     <p>
-      Train a gesture classifier on someone's forearm EMG on day 1. Take the electrodes off, put them back on four weeks
-      later, and the same model gets noticeably worse. A few seconds of new samples brings most of it back. This section
-      will let you try that yourself on recorded data.
+      The line at the top of this page is a real recording: one participant's forearm during a wrist flexion, from a public
+      dataset where the same 43 people were recorded on day 1, day 8 and day 29 with the electrodes taken off and put back
+      on in between. Train a simple classifier on day 1 and test it on day 29 and it gets noticeably worse. A handful of
+      fresh samples brings most of it back. I'm turning that into something you can try here.
     </p>
-    <ol class="steps">
-      <li><strong>Pick a gesture.</strong> <span class="meta">Hand Close · Hand Open · Thumb–Index Opposition · Index Finger Extension</span></li>
-      <li><strong>Hold to contract.</strong> The real recorded EMG for that gesture replays; the classifier labels each 200 ms window live.</li>
-      <li><strong>Skip to day 29.</strong> Same participant, same day-1 model. Watch the accuracy drop.</li>
-      <li><strong>Recalibrate.</strong> Hold three times; the class means and covariance update in your browser.</li>
-    </ol>
-    <p class="todo">TODO(phase 4): the interactive version and the population results across all 43 participants.</p>
-    <p class="meta honesty">
-      Uses recorded public data (GRABMyo, day 1 and day 29) and a simple LDA classifier that runs in your browser.
-      It isn't MyoCopilot's model.
-    </p>
-    <p class="meta cite">
-      Data: Jiang, N., Pradhan, A., &amp; He, J. (2024). Gesture Recognition and Biometrics ElectroMyogram (GRABMyo)
-      (version 1.1.0). PhysioNet. <a href="https://doi.org/10.13026/89dm-f662">doi:10.13026/89dm-f662</a>. CC BY 4.0.
-      Pradhan, A., He, J. &amp; Jiang, N. Multi-day dataset of forearm and wrist electromyogram for hand gesture recognition
-      and biometrics. Sci Data 9, 733 (2022). <a href="https://doi.org/10.1038/s41597-022-01836-y">doi:10.1038/s41597-022-01836-y</a>.
-    </p>
-    <p class="meta">
-      Same problem, two projects: <a href="/work/myocopilot">MyoCopilot</a> (EMG) and
-      <a href="/work/edge-decoder-drift">edge-decoder-drift</a> (intracortical BCI).
+    <p class="todo">TODO(phase 4): the interactive version, with numbers across all 43 participants.</p>
+    <p class="cite">
+      Data: GRABMyo v1.1.0 (Jiang, Pradhan &amp; He, PhysioNet, 2024),
+      <a href="https://doi.org/10.13026/89dm-f662">doi:10.13026/89dm-f662</a>, CC BY 4.0. Dataset paper: Pradhan, He &amp;
+      Jiang, Sci Data 9, 733 (2022).
     </p>
   </div>
 </section>
 
 <style>
-  .steps { margin: 2rem 0; }
-  .steps li { margin-bottom: 1rem; }
-  .steps strong { font-weight: 600; }
-  .steps .meta { display: block; }
-  .honesty { border-left: 2px solid var(--bronze); padding-left: 0.75rem; color: var(--bone); }
+  .cite { font-size: 0.85rem; color: var(--bone-dim); }
 </style>

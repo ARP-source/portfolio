@@ -130,6 +130,7 @@ export class Field {
       uPointer: { value: [-1e4, -1e4, 0] },
       uScrollDy: { value: 0 },
       uScroll: { value: scrollY },
+      uSnap: { value: 0 },
       uMaskStrength: { value: MASK_MODES[maskMode()].strength },
       uTrace: { value: this.#traceTex },
       uTraceN: { value: pts.length },
@@ -154,8 +155,8 @@ export class Field {
     const o = this.#o;
     const yieldTask = () => new Promise<void>((r) => setTimeout(r, 0));
     this.#resize();
-    const hero = bus.last('section:enter');
-    const startForm: Formation = this.#heroVisible() || hero?.id === 'hero' ? 'trace' : 'swarm';
+    // Only what is on screen now counts: the bus may still remember a hero the visitor has scrolled past.
+    const startForm: Formation = this.#heroVisible() ? 'trace' : 'swarm';
     this.#form = { from: FORM_VALUE[startForm]!, to: FORM_VALUE[startForm]!, start: 0, value: FORM_VALUE[startForm]! };
     await yieldTask();
     if (this.#disposed) return;
@@ -188,6 +189,16 @@ export class Field {
     const to = FORM_VALUE[name];
     if (to === undefined) return;
     const now = performance.now();
+    // Leaving the trace after it has already scrolled out of view (a fast scroll): don't fly thousands
+    // of particles back from off-screen. Place them at their swarm homes and fade the field back in.
+    if (to === 0 && this.#form.value > 0.5 && !this.#traceOnScreen() && this.#sim) {
+      this.#form = { from: 0, to: 0, start: now, value: 0 };
+      this.#shared.uSnap!.value = 1;
+      this.#step(1 / 60);
+      this.#shared.uSnap!.value = 0;
+      this.#fade = 0;
+      return;
+    }
     this.#form = { from: instant ? to : this.#form.value, to, start: now, value: instant ? to : this.#form.value };
     if (this.#o.reducedMotion && !this.#disposed && this.#sim) {
       this.#form.value = to;
@@ -414,6 +425,13 @@ export class Field {
     if (!el) return false;
     const r = el.getBoundingClientRect();
     return r.bottom > this.#vh * 0.2 && r.top < this.#vh * 0.8;
+  }
+
+  #traceOnScreen(): boolean {
+    const el = document.querySelector('.hero-trace svg');
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.bottom > 0 && r.top < this.#vh;
   }
 
   #updateTraceRect(): void {

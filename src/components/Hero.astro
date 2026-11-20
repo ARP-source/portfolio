@@ -7,23 +7,27 @@ const { intro } = Astro.props;
 
 <section class="hero wrap" aria-labelledby="hero-title" data-section="hero">
   <h1 id="hero-title">{site.name}</h1>
-  <p class="meta role">{site.role}</p>
-  <p class="thesis">{site.thesis}</p>
-  <p class="intro col dim">{intro}</p>
+  <div class="col">
+    <p class="lede">
+      I'm a student at San José State. I write software for muscle and brain signals, mostly the part that comes after
+      the demo works: the signal drifts, the model trained last week gets worse, and something has to notice and adapt.
+    </p>
+    <p class="intro">{intro}</p>
+    <p class="links">
+      <a href={site.github}>GitHub</a>
+      {site.email && <a href={`mailto:${site.email}`}>Email</a>}
+      {site.linkedin && <a href={site.linkedin}>LinkedIn</a>}
+      <a href="#work">Projects</a>
+    </p>
+  </div>
   <HeroTrace />
 </section>
 
 <style>
-  .hero { padding-block: clamp(3rem, 2rem + 6vw, 7rem) 3rem; }
-  .role { margin: 0.75rem 0 0; }
-  .thesis {
-    font-size: clamp(1.6rem, 1.1rem + 2.2vw, 2.6rem);
-    line-height: 1.15;
-    font-style: italic;
-    font-weight: 380;
-    color: var(--bone);
-    max-width: 22ch;
-    margin: 1rem 0 1.75rem;
-  }
-  .intro { margin-bottom: 3rem; }
+  .hero { padding-block: clamp(2.5rem, 1.5rem + 5vw, 6rem) 2rem; }
+  h1 { margin-bottom: 1.5rem; }
+  .lede { font-size: clamp(1.2rem, 1.05rem + 0.6vw, 1.45rem); line-height: 1.45; color: var(--bone); }
+  .intro { color: var(--bone-dim); }
+  .links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 1.5rem 0 3rem; }
+  .links a { padding-block: 0.3rem; }
 </style>

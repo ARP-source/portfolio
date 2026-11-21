@@ -5,6 +5,11 @@ import { REFORM, ROUTE_N } from './reform';
 export const DEMO = { cloudShare: 0.5, cloudSd: 2.0 };
 /** Thread: the share of the flock that draws a project's graph, and how many points describe it. */
 export const THREAD = { share: 0.1, n: 32 };
+/**
+ * The idle flock, when no dot is drawing anything: a share of it fades out and the rest is paler,
+ * so it stays in view without competing with the text. Dots come back as they are recruited.
+ */
+export const IDLE = { alpha: 0.6, hidden: 0.35 };
 
 const f = (n: number) => n.toFixed(3);
 
@@ -501,6 +506,7 @@ varying float vRank;
 varying float vSeed;
 varying float vRecruit;
 varying float vDepth;
+varying float vIdle;        // alpha multiplier for a dot that isn't drawing anything
 uniform vec4 uMaskView;     // scroll x, y and the page's size, CSS px: where this dot sits on the page mask
 varying vec2 vMaskUv;
 void main(){
@@ -512,9 +518,13 @@ void main(){
   float dw=demoWeight(H,P.w);
   vThread=threadWeight(H,P.w);
   vRecruit=max(max(formWeightV(H,P.w,uForm,V),dw*demoInk(H,P.w)),vThread);
+  // Idle: the hidden share fades out, the rest pales. The pointer's push (V.z) counts as use.
+  float used=clamp(max(vRecruit,V.z),0.0,1.0);
+  float keep=step(${f(IDLE.hidden)},fract(sin(P.w*91.7)*43758.5453));
+  vIdle=mix(keep*${f(IDLE.alpha)},1.0,used);
   // Swarm dots 2-3 px, big enough to read as ink; recruited dots swell a little; on the hand,
   // nearer dots are larger.
-  gl_PointSize=(mix(2.0,3.0,H.z*H.z)+vRecruit*0.6)*(1.0+0.25*P.z)*uPixelRatio;
+  gl_PointSize=vIdle>0.0 ? (mix(2.0,3.0,H.z*H.z)+vRecruit*0.6)*(1.0+0.25*P.z)*uPixelRatio : 0.0;
 }
 `;
 
@@ -536,6 +546,7 @@ varying float vRecruit;
 varying float vDepth;
 varying vec2 vMaskUv;
 varying float vThread;
+varying float vIdle;
 float hash(float n){ return fract(sin(n)*43758.5453); }
 void main(){
   vec2 c=gl_PointCoord-0.5; float r2=dot(c,c);
@@ -554,7 +565,7 @@ void main(){
   col=mix(col,uDrift,uBleed*recruit);
   float a=mix(mix(0.9,1.0,vRank), mix(0.8,0.95,vAct), recruit);
   // Far side of the hand is paler, so it reads as a solid turning in space.
-  a*=clamp(0.78+0.45*vDepth,0.4,1.0);
+  a*=clamp(0.78+0.45*vDepth,0.4,1.0)*vIdle;
 
   float mask=texture2D(uMask,vMaskUv).r;
   // Thread dots draw right under a line of text, so the text fade leaves them alone.
